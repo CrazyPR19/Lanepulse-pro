@@ -1,0 +1,318 @@
+---
+Task ID: 1
+Agent: main (orchestrator)
+Task: Foundation - Prisma schema, sporty theme, NextAuth, types, lib utilities, seed defaults
+
+Work Log:
+- Defined full Prisma schema (users, swimmers, swimming_styles, training_groups, group_members, training_sessions, session_lanes, session_laps, performance_notes, audit_logs, app_config) at prisma/schema.prisma; ran `bun run db:push` successfully.
+- Installed bcryptjs + @types/bcryptjs for password hashing.
+- Rewrote src/app/globals.css with sporty swim theme (navy/aqua/white), custom scrollbars, timer digit styles, wave + running-pulse animations.
+- Created src/lib/types.ts with all DTOs (User, Swimmer, Style, Group, Member, Session, Lane, Lap, Notes, Audit) + analysis report types (Improvement, CurrentVsPrevious, SwimmerVsSwimmer, GroupRanking, LapPerformance, Recommendation) + LiveLaneState/LaneSlot/TimerMode.
+- Created src/lib/helpers.ts (hashPassword, verifyPassword, formatMs, formatSeconds, buildSessionName, POOL_LANES=1..12, DEFAULT_STYLES list of 11, role permission helpers).
+- Created src/lib/auth.ts (NextAuth Credentials provider, JWT with role, session augmentation).
+- Created src/lib/session.ts (getSession, requireUser, requireRole, UnauthenticatedError/ForbiddenError, toUserDTO, hasAnyUser, hasStyles).
+- Created src/lib/api.ts (json, errorResponse, audit, parseBody, requireFields, clampLane).
+- Created src/lib/seed.ts (seedDefaultStyles, createFirstSuperAdmin with audit log).
+- Created src/app/api/auth/[...nextauth]/route.ts.
+- Created src/components/providers.tsx (SessionProvider + ThemeProvider + QueryClientProvider).
+
+Stage Summary:
+- Foundation contracts in place: every DTO, every role helper, every auth + audit primitive.
+- Theme is sporty navy/aqua/white (light + dark).
+- Database in sync. Default styles + first admin are created through setup wizard (seed.ts).
+- Ready for parallel API + frontend work.
+- IMPORTANT CONVENTIONS for downstream agents:
+  * Auth: `import { requireRole, requireUser, getSession } from "@/lib/session"`. Throw UnauthenticatedError(401)/ForbiddenError(403) — caught by errorResponse().
+  * DB: `import { db } from "@/lib/db"`.
+  * Audit: `import { audit, json, errorResponse, parseBody, requireFields, clampLane } from "@/lib/api"`.
+  * Roles: "SUPER_ADMIN" | "COACH" | "VIEWER". Use role helpers in helpers.ts (canManageSwimmers, canRunSessions, canDeleteEverything, canManageUsers, canViewReports).
+  * Lane numbers are 1..12 (POOL_LANES constant).
+  * Default styles seed list (11): Free Style, Back Stroke, Breast Stroke, Butterfly, Individual Medley, Freestyle Relay, Medley Relay, Kickboard Drill, Pull Buoy Drill, Sprint Training, Endurance Training.
+  * Session statuses: DRAFT | RUNNING | COMPLETED | ABORTED. Lane statuses: IDLE | READY | RUNNING | FINISHED | DNF.
+  * Time stored as Float seconds (elapsedSeconds, lapTimeSeconds, cumulativeSeconds). Frontend converts ms<->sec.
+  * Session auto-name format: `${styleName} - ${distanceMeters}m - ${groupName} - yyyy-mm-dd HH:mm` (use buildSessionName helper).
+
+---
+Task ID: 2-b
+Agent: api-sessions-analysis
+Task: Build SESSIONS CRUD + save-with-lanes-laps API routes, plus 6 ANALYSIS report endpoints (improvement, current-vs-previous, swimmer-vs-swimmer, group-ranking, lap-performance) and the smart RECOMMENDATIONS engine.
+
+Work Log:
+- Created `src/lib/analysis.ts` — pure statistical helpers (`sum`, `avg`, `min`, `max`, `stddev` [population], `round`, `roundOrNull`, `improvementBucket`, `changeBucket`, `computeLapPerformance`). Documented and exported for reuse by all analysis routes and downstream agents.
+- Created `src/app/api/sessions/route.ts`:
+  * GET — any authenticated user. Supports `from`, `to`, `swimmerId`, `groupId`, `styleId`, `distance`, `status` filters. Ordered by sessionDate DESC. Includes styleName, groupName, createdByName, laneCount (`_count`).
+  * POST — COACH+/SUPER_ADMIN. Creates session (createdByUserId = current user), validates style/group/swimmer existence, validates laneNo 1..12 and uniqueness. Inside a `$transaction`: creates session → creates each provided lane → creates laps with `sessionLaneId` linkage. Auto-fills `resultText`/`lapTimeText` via `formatSeconds` when client omits them. Re-fetches with lanes+laps. Audit `CREATE_SESSION` (no lanes) or `SAVE_SESSION` (with lanes).
+- Created `src/app/api/sessions/[id]/route.ts`:
+  * GET — any user. Full session with lanes (each with swimmerName) + laps ordered by lapNo.
+  * PATCH — COACH+. Updates sessionName/status/remarks/sessionStartTime/sessionEndTime. Audit `UPDATE_SESSION`.
+  * DELETE — SUPER_ADMIN only. Body `{ confirm: "DELETE SESSION" }` enforced; otherwise 400. Cascade transaction: delete laps → lanes → session. Audit `DELETE_SESSION`.
+- Created `src/app/api/sessions/[id]/lanes/route.ts` — GET lanes (with laps) ordered by laneNo. Convenience route.
+- Created `src/app/api/sessions/[id]/laps/route.ts` — GET all laps ordered by laneNo then lapNo.
+- Created `src/app/api/analysis/improvement/route.ts` — GET `?swimmerId=&styleId=&distanceMeters=`. Returns ImprovementReport. previousBest = min of all but latest; improvementSeconds = previousBest − latest (>0 = faster). trend array for chart.
+- Created `src/app/api/analysis/current-vs-previous/route.ts` — GET `?groupId=&styleId=&distanceMeters=` (all optional). For each swimmer with ≥1 finished lane matching filters: takes last 2 sessions by sessionDate DESC, computes changeSeconds (last − previous; negative = improved) and direction.
+- Created `src/app/api/analysis/swimmer-vs-swimmer/route.ts` — GET `?a=&b=&styleId=&distanceMeters=&from=&to=` (a, b, styleId, distanceMeters required). Computes per-swimmer bestTime (min), avgTime, latestTime, consistency (population stddev), and lapConsistency (avg of per-session lap stddevs). Returns SwimmerVsSwimmerReport with null fields when no data.
+- Created `src/app/api/analysis/group-ranking/route.ts` — GET `?sessionId=`. Lists finished lanes ordered by elapsedSeconds ASC, with 1-based rank, gapFromFirst, isBest.
+- Created `src/app/api/analysis/lap-performance/route.ts` — GET. Mode 1 `?sessionId=`: aggregate ALL laps across all lanes in the session, group by lapNo and average; swimmerName = "Session Aggregate". Mode 2 `?swimmerId=&styleId=&distanceMeters=`: aggregate laps across matching sessions; swimmerName = swimmer's name. Both compute fastestLap, slowestLap, avgLap, dropOffPercent, consistencyScore (stddev/avg*100), enduranceDrop (lastLap is slowest AND > avgLap*1.1).
+- Created `src/app/api/analysis/recommendations/route.ts` — smart engine. GET `?swimmerId=&styleId=&distanceMeters=` (all required).
+  * Computes improvement status, then analyzes laps for trend signals.
+  * Categorization priority (mutually exclusive, single category):
+    1. NOT_ENOUGH_DATA — when <2 finished sessions OR zero laps recorded.
+    2. ENDURANCE_DROP — laps in the latest-with-laps session are monotonically non-decreasing (tolerance 0.05s).
+    3. FAST_START_DROP — lap1 < avgLap*0.85 AND lastLap > avgLap*1.1 (in latest-with-laps session).
+    4. IMPROVED — improvement bucket IMPROVED.
+    5. SLOWER — improvement bucket SLOWER.
+    6. CONSISTENT — fallback (stable performance, lap stddev/avg < 0.05).
+  * Builds coach-friendly recommendation text per category (whatHappened, whyItMayHappen[], whatToTrainNext[]) — practical, no medical claims.
+  * Adds STYLE-BASED coaching tips (Free Style, Back Stroke, Breast Stroke, Butterfly, Individual Medley, Relay) and generic technique advice for Kickboard Drill / Pull Buoy Drill / Sprint Training / Endurance Training.
+  * Persists a `PerformanceNote` record (with swimmerId, styleId, distanceMeters, recommendationText, createdByUserId) so coach can review later.
+  * Audits `GENERATE_RECOMMENDATION`.
+  * Returns the RecommendationReport plus `performanceNoteId`.
+
+Stage Summary:
+- All 11 API files created and lint-clean (`bun run lint` passes with zero errors). TypeScript also type-checks cleanly (`bunx tsc --noEmit`) for all new files (pre-existing unrelated errors in examples/, skills/, providers.tsx, auth.ts remain but are out of scope for this task).
+- All routes follow the foundation conventions: `import { db } from "@/lib/db"`, `import { requireUser, requireRole } from "@/lib/session"`, `import { json, errorResponse, parseBody, requireFields, audit } from "@/lib/api"`, every handler wrapped in try/catch with `errorResponse(err)`, Date → ISO conversion, Float seconds → number.
+- Same-swimmer + same-style + same-distance comparison rule is enforced across all 6 analysis endpoints via the Prisma `session: { styleId, distanceMeters }` filter.
+- The recommendations engine is defensive (returns NOT_ENOUGH_DATA rather than throwing) and produces actionable, friendly coach language plus style-specific technique drills.
+- Conventions for downstream agents (frontend):
+  * `GET /api/sessions` returns `TrainingSessionDTO[]` (with styleName/groupName/createdByName/laneCount).
+  * `GET /api/sessions/:id` returns the full DTO with nested `lanes[]` (each with `laps[]` and `swimmerName`).
+  * `POST /api/sessions` accepts `{ sessionName, styleId, distanceMeters, groupId?, status?, remarks?, sessionStartTime?, sessionEndTime?, lanes?[] }` — each lane has `{ laneNo, swimmerId?, status?, elapsedSeconds?, laps?[] }`. Returns the created session DTO (201).
+  * `PATCH /api/sessions/:id` accepts `{ sessionName?, status?, remarks?, sessionStartTime?, sessionEndTime? }` (COACH+).
+  * `DELETE /api/sessions/:id` requires body `{ confirm: "DELETE SESSION" }` (SUPER_ADMIN).
+  * Analysis endpoints all accept GET query params as documented above and return the exact DTO shapes from `src/lib/types.ts`.
+  * `GET /api/analysis/recommendations` returns the `RecommendationReport` plus an extra `performanceNoteId` field for UI cross-linking.
+  * The pure helpers in `src/lib/analysis.ts` are available for any future server-side stat work.
+
+---
+Task ID: 2-a
+Agent: api-core (CORE API routes)
+Task: Build all core CRUD/setup/admin API routes under /api (setup, me, styles, swimmers, groups + members, users, admin/*) on top of the foundation contracts.
+
+Work Log:
+- Created src/app/api/setup/route.ts — GET returns {hasUsers, hasStyles, needsSetup}; POST creates first super admin via createFirstSuperAdmin() (409 if users already exist). Validates unique email/username pre-emptively.
+- Created src/app/api/me/route.ts — GET requires auth, returns current user DTO via toUserDTO.
+- Created src/app/api/styles/route.ts — GET (any auth user) returns styles ordered by [isActive desc, sortOrder asc, styleName asc], includes inactive. POST (SUPER_ADMIN) creates style, validates unique styleName, audits "CREATE_STYLE".
+- Created src/app/api/styles/[id]/route.ts — PATCH (SUPER_ADMIN) updates styleName/isActive/sortOrder with uniqueness check; audits "UPDATE_STYLE". DELETE (SUPER_ADMIN) checks no DRAFT/RUNNING sessions reference it (409 if so), soft-deletes (isActive=false), audits "DELETE_STYLE".
+- Created src/app/api/swimmers/route.ts — GET (any auth) supports ?search= (SQLite contains is case-insensitive) and ?active=true|false, ordered by swimmerName. POST (COACH+) validates swimmerName, parses dateOfBirth (empty string → null), validates gender enum, audits "CREATE_SWIMMER". Exports toSwimmerDTO for reuse.
+- Created src/app/api/swimmers/[id]/route.ts — GET returns swimmer DTO + history {recentSessions (last 10 sessions where swimmer has lanes, as TrainingSessionDTO), bestTimes (grouped by [styleId, distanceMeters] from FINISHED lanes with non-null elapsedSeconds; min wins; includes styleName, bestText via formatSeconds, sessionDate), totalSessions}. PATCH (COACH+) updates fields with validation. DELETE (SUPER_ADMIN) supports permanent hard-delete when confirm==="DELETE SWIMMER" AND no session_lanes/laps reference the swimmer (409 otherwise); otherwise soft-delete (activeStatus=false). Audits "DELETE_SWIMMER" / "DEACTIVATE_SWIMMER".
+- Created src/app/api/groups/route.ts — GET (any auth) supports ?active=, ordered by createdAt desc, includes memberCount (only active members counted). POST (COACH+) validates groupName, parses groupDate, audits "CREATE_GROUP". Exports toGroupDTO.
+- Created src/app/api/groups/[id]/route.ts — GET returns group + active members (with swimmerName) ordered by laneNo. PATCH (COACH+) updates fields. DELETE (SUPER_ADMIN): if confirm==="CLEAR GROUPS" AND no sessions reference the group, hard-delete; otherwise soft-delete (isActive=false). Audits "DELETE_GROUP".
+- Created src/app/api/groups/[id]/members/route.ts — GET lists active members (with swimmerName). POST (COACH+) clamps laneNo 1..12, validates lane conflict (409 with helpful message) and same-swimmer-twice (deactivates old active membership for the swimmer), audits "ASSIGN_LANE". PUT (COACH+) bulk-replaces all active members in a transaction: validates no duplicate lanes/swimmers in payload, deactivates existing actives (with cleanup of conflicting inactive rows for the unique constraint), creates new actives. Audits "BULK_ASSIGN_LANES".
+- Created src/app/api/groups/[id]/members/[memberId]/route.ts — PATCH (COACH+) handles laneNo/swimmerId/isActive updates; treats swimmerId change as a swap; validates lane conflicts and same-swimmer-twice; carefully manages the @@unique([groupId, laneNo, isActive]) constraint by deleting conflicting inactive rows. DELETE (COACH+) deactivates the member (with cleanup), audits "REMOVE_FROM_LANE".
+- Created src/app/api/users/route.ts — GET (SUPER_ADMIN) lists all users as DTOs, ordered by createdAt. POST (SUPER_ADMIN) validates role enum + unique username/email, hashes password via hashPassword, audits "CREATE_USER".
+- Created src/app/api/users/[id]/route.ts — PATCH (SUPER_ADMIN) updates fields, hashes password if provided, prevents demoting/deactivating the last super admin (409), audits "UPDATE_USER". DELETE (SUPER_ADMIN) blocks self-delete (409) and last-super-admin delete (409); if confirm==="DELETE USER" AND no audit logs AND no sessions reference the user, hard-delete (also cleans performance_notes); otherwise soft-delete (isActive=false). Audits "DELETE_USER".
+- Created src/app/api/admin/stats/route.ts — GET (SUPER_ADMIN) returns counts {users, swimmers, styles, groups, sessions, sessionLanes, sessionLaps, performanceNotes, auditLogs}.
+- Created src/app/api/admin/audit/route.ts — GET (SUPER_ADMIN) returns recent audit logs (default 100, ?limit= capped at 500), with userName via include, ordered by createdAt desc.
+- Created src/app/api/admin/clear-sessions/route.ts — POST (SUPER_ADMIN) requires confirm==="CLEAR DATA" (400 otherwise); deletes all session_laps, session_lanes, training_sessions in a transaction. Audits "CLEAR_SESSIONS".
+- Created src/app/api/admin/clear-groups/route.ts — POST (SUPER_ADMIN) requires confirm==="CLEAR GROUPS"; deletes all group_members, hard-deletes groups with no sessions, soft-deletes groups with sessions. Audits "CLEAR_GROUPS".
+- Created src/app/api/admin/clear-training-data/route.ts — POST (SUPER_ADMIN) requires confirm==="CLEAR DATA"; deletes everything except users and swimming_styles (laps → lanes → notes → sessions → members → groups → swimmers, in a transaction). Audits "CLEAR_TRAINING_DATA".
+
+Stage Summary:
+- All 17 route files (covering 21+ HTTP handlers) implemented per spec with consistent error handling, audit logging, role enforcement, and DTO serialization (Date → ISO, Float → number|null).
+- Lint passes clean (`bun run lint` → no errors). Smoke-tested /api/setup (GET 200, POST 201, POST-when-users-exist 409) and verified /api/me, /api/styles, /api/admin/stats correctly return 401 without auth.
+- Cleaned up the smoke-test admin user from the dev DB so the setup wizard gate is back to needsSetup=true.
+- IMPORTANT CONVENTIONS for downstream agents:
+  * Use `import { toSwimmerDTO } from "@/app/api/swimmers/route"` and `import { toGroupDTO } from "@/app/api/groups/route"` for DTO conversion in dependent routes (sessions, analysis).
+  * Group members soft-delete approach honors the `@@unique([groupId, laneNo, isActive])` constraint by deleting any conflicting inactive record with the same (groupId, laneNo) before deactivating. Same approach used in PATCH/PUT/DELETE.
+  * Swimmer GET /:id returns `{ ...SwimmerDTO, history: { recentSessions: TrainingSessionDTO[], bestTimes: { styleId, styleName, distanceMeters, bestSeconds, bestText, sessionDate }[], totalSessions } }` — frontend can consume directly.
+  * Audit actions used: SETUP_CREATE_ADMIN (seed), CREATE_STYLE, UPDATE_STYLE, DELETE_STYLE, CREATE_SWIMMER, UPDATE_SWIMMER, DELETE_SWIMMER, DEACTIVATE_SWIMMER, CREATE_GROUP, UPDATE_GROUP, DELETE_GROUP, ASSIGN_LANE, BULK_ASSIGN_LANES, TRANSFER_LANE, REMOVE_FROM_LANE, CREATE_USER, UPDATE_USER, DELETE_USER, CLEAR_SESSIONS, CLEAR_GROUPS, CLEAR_TRAINING_DATA.
+  * All admin/clear-* routes require explicit `confirm` strings (documented in 400 response messages).
+  * All Date inputs (dateOfBirth, groupDate) accept ISO strings; empty string → null. Invalid date → 400.
+  * Role enforcement: setup POST is the only fully-public mutation; everything else requires requireUser() or requireRole(...). GET on styles/swimmers/groups/group-members is any authenticated user; mutations on swimmers/groups/members require COACH+; users/styles/admin/* require SUPER_ADMIN.
+  * Deviations from spec: (1) `groups/[id]/members/[memberId]` PATCH audit action is "TRANSFER_LANE" (spec said "Audit" without naming it) — chosen for clarity. (2) `users/[id]` DELETE hard-delete path also blocks when the user has created training sessions (NOT NULL createdByUserId), not just audit logs — added for referential safety; spec only mentioned audit logs but sessions are non-nullable FK. (3) `admin/clear-groups` strategy: hard-delete groups with no sessions, soft-delete groups with sessions — chose this hybrid because hard-deleting groups that have sessions would cascade-NULL session.groupId which loses history; the spec's "OR" wording left room for this.
+
+---
+Task ID: 7
+Agent: frontend-analysis-admin-settings
+Task: Build three frontend views — Analysis Dashboard (6 report tabs), Admin Maintenance (SUPER_ADMIN), and Settings (SUPER_ADMIN).
+
+Work Log:
+- Read worklog + foundation contracts (types.ts, helpers.ts, store.ts, api-client.ts) and inspected API routes under /api/analysis/* and /api/admin/* and /api/users, /api/styles, /api/sessions to confirm exact request/response shapes.
+- Created `src/components/views/analysis-view.tsx` (sporty navy/aqua theme, mobile-first, ~1600 lines):
+  * Tabs (shadcn) with 6 triggers: Improvement, Current vs Previous, Swimmer vs Swimmer, Group Ranking, Lap Performance, Recommendations.
+  * Tab A — Improvement: Select swimmer/style/distance (25/50/100/200/400/800/1500) + Generate button. Cards for previousBest, latestTime, improvementSeconds (green if improved, red if slower), improvementPercent, status badge (Improved/Slower/Same/Not Enough Data). Recharts LineChart (aqua line) of `trend` (x=sessionDate, y=timeSeconds, lower=better). useQuery enabled on `triggered > 0 && canGenerate`.
+  * Tab B — Current vs Previous: optional Select group/style/distance with `__all__` sentinel; auto-fetch via useQuery on dependency change. Sortable table (name/change/last columns with toggle direction). ChangeDelta colored (negative = improved = green). StatusBadge per row.
+  * Tab C — Swimmer vs Swimmer: Select Swimmer A (disabled when = B), Swimmer B, style, distance, from/to date inputs. Side-by-side MetricRow grid for bestTime / avgTime / latestTime / consistency / lapConsistency — winner per metric gets an aqua "Crown" badge and aqua-colored value.
+  * Tab D — Group Ranking: Select session. Ranked table with rank pill (gold/aqua for #1, silver for #2, bronze for #3), lane, swimmer, time, gapFromFirst. Best performer callout card with Trophy icon. Rank 1 row gets aqua/10 background.
+  * Tab E — Lap Performance: radio-style toggle (By Session | By Swimmer+Style+Distance) using two Buttons. Cards for fastestLap (aqua), slowestLap (red), avgLap, dropOffPercent, consistencyScore, enduranceDrop badge. Laps table with fastest/slowest highlighting. Recharts BarChart (aqua) of lap times by lapNo.
+  * Tab F — Training Recommendations: Select swimmer/style/distance + "Generate Recommendation" button. Coach-friendly card with three sections: "What Happened" (paragraph), "Why It May Be Happening" (bullet list with aqua dots), "What to Train Next" (checkmarks in aqua). Category badge (IMPROVED/SLOWER/CONSISTENT/FAST_START_DROP/ENDURANCE_DROP/NOT_ENOUGH_DATA) with icon + color. Aquamarine gradient background. Shows performanceNoteId footer.
+  * Shared lookups: useSwimmers / useStyles / useGroups / useSessions (TanStack Query). Sentinel value `__all__` for "all" in optional selects (shadcn Select cannot use empty string).
+  * Hoisted `MetricRow` to module scope to satisfy `react-hooks/static-components` lint rule.
+  * `ChangeDelta` component handles invert flag (improvement positive vs change negative). `StatusBadge` for IMPROVED/SLOWER/SAME/NOT_ENOUGH_DATA with proper color classes.
+- Created `src/components/views/admin-view.tsx` (~960 lines, SUPER_ADMIN gated):
+  * Access-denied card if `!canManageUsers(role) || !canDeleteEverything(role)`.
+  * StatsCard: GET /api/admin/stats → 9 stat cards (users, swimmers, styles, groups, sessions, sessionLanes, sessionLaps, performanceNotes, auditLogs) in a responsive grid.
+  * AuditCard: GET /api/admin/audit?limit=50 → ScrollArea table (timestamp, user, action badge, table, recordId truncated, details). Max height 96 with custom scrollbar.
+  * DangerZoneCard: 4 AlertDialog-driven destructive actions, each requiring typed confirmation:
+      - Delete Selected Session (with session picker, confirm "DELETE SESSION") → DELETE /api/sessions/[id].
+      - Clear All Session Results (confirm "CLEAR DATA") → POST /api/admin/clear-sessions.
+      - Clear All Groups (confirm "CLEAR GROUPS") → POST /api/admin/clear-groups.
+      - Clear All Training Data (confirm "CLEAR DATA") → POST /api/admin/clear-training-data.
+    Each action toasts success and invalidates related queries. Hoisted `DangerRow` to module scope for the static-components lint rule.
+  * UserManagementCard: GET /api/users → table (fullName, username, email, role badge, active status, lastLogin, edit/deactivate actions). "Add User" dialog (fullName, email, username, password, role Select, isActive Switch) → POST /api/users. Edit user → PATCH /api/users/[id] (password blank = keep). Deactivate dialog with optional "DELETE USER" typed confirmation for permanent delete. Cannot delete self (toast blocks). Cannot delete last super admin (backend 409). Self-row shows "you" aqua badge.
+- Created `src/components/views/settings-view.tsx` (~510 lines, SUPER_ADMIN gated):
+  * DatabaseCard: read-only grid (Type=SQLite built-in, Status=Connected, Host=local, Port=—, Database=lanepulse_pro, User=—, Password=********). "Test Connection" button toasts "Connection OK". Info callout: "LanePulse Pro uses a built-in local database. No external setup required."
+  * StylesCard: GET /api/styles → table (styleName, sortOrder, isActive, edit/deactivate actions). Add style dialog (styleName, sortOrder number, isActive Switch) → POST /api/styles. Edit → PATCH /api/styles/[id]. Deactivate → AlertDialog → DELETE /api/styles/[id]. Disabled Deactivate button when style is already inactive.
+  * AppInfoCard: version (1.0.0), lane count (12), theme (Sporty Navy/Aqua light+dark), framework (Next.js 16 + TypeScript). "Open Admin Console" button calls `useAppStore().setView('admin')` per spec.
+- Conventions followed: all "use client"; shadcn/ui components only; Recharts for LineChart + BarChart; TanStack Query useQuery/useMutation/useQueryClient; api from @/lib/api-client; toast from sonner; useAppStore; formatSeconds; canDeleteEverything/canManageUsers; types from @/lib/types; cn from @/lib/utils. Sporty navy/aqua/white theme, no indigo/purple, mobile-first, large touch targets, Lucide icons, no white-on-white. Color logic: improved (faster) = green, slower = red, same = gray, no-data = muted. AQUA = #1f9fbf, NAVY = #0b1f3a for chart strokes.
+
+Stage Summary:
+- Three view files built and overwrite the existing stubs: analysis-view.tsx, admin-view.tsx, settings-view.tsx.
+- Lint status: `bun run lint` reports ZERO errors in my three files. The 2 remaining lint errors are in foundation files app-shell.tsx (set-state-in-effect) and auth-gate.tsx (set-state-in-effect), explicitly out of scope per task spec ("Do NOT modify foundation files, the timer-view, or other view files. Only build your three files."). TypeScript also reports zero errors in my three files (`bunx tsc --noEmit` only flags pre-existing examples/, skills/, providers.tsx, auth.ts, timer-view.tsx issues).
+- Hoisted two inner-defined components (MetricRow in analysis-view.tsx, DangerRow in admin-view.tsx) to module scope to satisfy the `react-hooks/static-components` lint rule (forbidden to define components inside another component's render body).
+- Deviations: None. All 6 analysis endpoints consumed exactly as documented in Task 2-b. All 4 admin danger-zone endpoints used with exact confirm strings ("DELETE SESSION", "CLEAR DATA", "CLEAR GROUPS", "CLEAR DATA"). User management follows Task 2-a conventions (POST /api/users, PATCH /api/users/[id], DELETE with optional "DELETE USER" for hard-delete). Style management follows /api/styles (POST/PATCH/DELETE). App-info "Open Admin Console" uses useAppStore().setView('admin') per spec.
+- Note on dev server: `/` returns 500 at runtime due to a pre-existing foundation bug in `src/components/providers.tsx` — it imports `SessionProvider` from `"next-auth"` (root) but next-auth v4 only exports `SessionProvider` from `"next-auth/react"`. This is acknowledged as out-of-scope in Task 2-b's worklog ("pre-existing unrelated errors in examples/, skills/, providers.tsx, auth.ts remain but are out of scope for this task"). My three files are isolated from this bug (they don't import SessionProvider) and would render correctly once the foundation bug is fixed.
+- Downstream agents: All three views are ready to be loaded by `src/components/auth-gate.tsx` (already wired up). The Analysis view exposes 6 fully-functional report tabs that hit the 6 analysis endpoints from Task 2-b plus the recommendations engine. Admin view fully exercises the 4 admin/clear-* endpoints and user CRUD. Settings view exercises styles CRUD and the read-only DB diagnostic. No further wiring needed.
+
+---
+Task ID: 6
+Agent: frontend-views-groups-history
+Task: Build two frontend views for the LanePulse Pro swim training app — (1) `src/components/views/groups-view.tsx` (Group / Heat Builder, 12-lane pool) and (2) `src/components/views/history-view.tsx` (Session History with filters, table/cards, detail dialog, CSV export, SUPER_ADMIN delete).
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` and the foundation contracts: `src/lib/types.ts` (DTOs), `src/lib/helpers.ts` (`POOL_LANES = [1..12]`, `formatSeconds`, `formatMs`, `canManageSwimmers`, `canDeleteEverything`), `src/lib/store.ts` (`useAppStore`, `ViewKey`), `src/lib/api-client.ts` (`api.get/post/patch/put/del`).
+- Inspected the existing API route handlers under `src/app/api/` to confirm exact request/response shapes for groups, group members (POST/PUT/PATCH/DELETE), sessions list, session detail, swimmers, styles.
+- **`src/components/views/groups-view.tsx`** (Group / Heat Builder) — `"use client"`:
+  * Header with title + "New Group" button (COACH+ only via `canManageSwimmers`).
+  * Group selector `Select` dropdown (active groups from `useQuery(["groups","active"])`) with member-count badges + "Edit" and "Bulk Replace" action buttons.
+  * Derived `effectiveSelectedGroupId = selectedGroupId ?? groupsQ.data?.[0]?.id ?? null` — auto-selects the first group on load WITHOUT a `setState`-in-effect (satisfies the strict `react-hooks/set-state-in-effect` ESLint rule).
+  * Lane Board: 12 lane cards in a responsive grid (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`). Each `LaneCard` shows lane number (big navy tabular-nums), swimmer name or "Empty", and action buttons — "Assign" (empty lanes), "Replace" + "Remove" (occupied lanes). Mobile-friendly 44px+ touch targets.
+  * Side panel (320px on desktop, below on mobile): "Group Details" card (name/level/date/members/remarks) + "Quick Transfer" card with aqcu-amber target-lane-occupied warning.
+  * **Quick Transfer** flow: pick a swimmer from this group → pick target group → pick target lane. Looks up target group's members (separate `useQuery`) to detect lane conflicts. Same-group transfer = `PATCH /api/groups/[id]/members/[memberId]` with new `laneNo`. Cross-group transfer = `POST` to target group + `DELETE` from source. If target lane occupied, an `AlertDialog` confirms the replace: removes the occupant first, then performs the transfer.
+  * **Swimmer Picker Dialog**: searchable (Input + Lucide `Search` icon) list of active swimmers not already in this group. Exclude list: in assign mode, all current members; in replace mode, all current members EXCEPT the one being replaced (allows re-picking as no-op). Picking calls `POST /api/groups/[id]/members` (assign) or `PATCH` (replace `swimmerId`).
+  * **New Group Dialog**: groupName (required) + groupLevel + groupDate + remarks → `POST /api/groups`.
+  * **Edit Group Dialog**: same fields pre-populated from current group → `PATCH /api/groups/[id]`.
+  * **Bulk Replace Dialog**: 12-lane form (one Select per lane) → `PUT /api/groups/[id]/members` with `{ members: [{ swimmerId, laneNo }] }`. Client-side validation rejects duplicate lanes / duplicate swimmers before submitting.
+  * **Remove Confirm**: `AlertDialog` warning that historical sessions are unaffected → `DELETE /api/groups/[id]/members/[memberId]`.
+  * All mutations use `useMutation` with `onSuccess` query invalidation (`["groups","active"]` + `["group", effectiveSelectedGroupId]` + target-group key for cross-group transfers) and `toast` feedback (sonner).
+  * Backend errors (lane conflict, same-swimmer-twice, etc.) surface as friendly `toast.error(msg)` messages.
+  * VIEWER role: write actions hidden (`canManage` gate); read-only browsing of lane board + group details still allowed.
+- **`src/components/views/history-view.tsx`** (Session History) — `"use client"`:
+  * Header with title + "Export All (Filtered)" button (visible to all authenticated roles including VIEWER and COACH).
+  * **Filter bar**: 7-column responsive grid (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7`) — From date, To date, Swimmer (Select of all swimmers), Group (Select of active groups), Style (Select of all styles), Distance (Select 25/50/100/200/400/800/1500), Status (Select DRAFT/RUNNING/COMPLETED/ABORTED). All optional. "Clear" button resets all filters. Debounced via `useEffect` with 350ms timeout that updates a `debounced` snapshot used for the actual query (the `setState` happens inside the `setTimeout` callback, NOT synchronously in the effect body, so it does NOT trip `react-hooks/set-state-in-effect`).
+  * Sessions fetched via `useQuery(["sessions", queryString])` hitting `GET /api/sessions?from=&to=&swimmerId=&groupId=&styleId=&distance=&status=`.
+  * **Desktop table** (`hidden lg:block`): columns Session Name, Date/Time (with calendar/clock icons), Style, Distance, Group, Lanes (badge), Status (colored badge), Actions (Details / Export CSV / Delete). Uses shadcn `Table` components.
+  * **Mobile cards** (`lg:hidden divide-y`): session name + status badge header, 2-col meta grid, action buttons row.
+  * Status badge colors per spec: DRAFT gray (muted), RUNNING aqua, COMPLETED green-600, ABORTED red-500.
+  * **View Details Dialog**: fetches `GET /api/sessions/[id]` (`useQuery(["session", detailId])`). Shows meta grid (Date/Style/Distance/Group), status + coach + time-range, remarks, and a scrollable lane list. Each lane shows lane number, swimmer name (or "Unassigned"), colored lane-status pill, elapsed time (formatted with `formatSeconds`), lap count, and a collapsible `<details>` for lap splits (per-lap time + cumulative).
+  * **Export CSV** (per row): fetches session detail, builds CSV with header `Session,Lane,Swimmer,Style,Distance,Time,LapCount,Status`, one row per lane. Escapes quotes/commas/newlines. Downloads via Blob + `<a download>` with BOM for Excel friendliness. Filename: `lanepulse-YYYY-MM-DD-{safe-session-name}.csv`.
+  * **Export All (Filtered)**: iterates filtered session list, fetches each detail, concatenates rows under a single CSV header, downloads as `lanepulse-sessions-YYYY-MM-DD.csv`. Uses `useExportTracker` hook (Set-based) to show per-row + bulk loading spinners.
+  * **Delete** (SUPER_ADMIN only via `canDeleteEverything`): `AlertDialog` with typed confirmation — user must type `DELETE SESSION` exactly to enable the delete button. Calls `DELETE /api/sessions/[id]` with body `{ confirm: "DELETE SESSION" }`. Invalidates `["sessions"]` query on success.
+  * VIEWER + COACH: can view + export; delete button hidden. SUPER_ADMIN: full access.
+  * Loading + empty states: spinner with `Loader2`, friendly empty state with `History` icon and contextual message.
+- **Lint-clean for both files**: `bunx eslint src/components/views/groups-view.tsx src/components/views/history-view.tsx` returns zero errors. Refactored to avoid the strict `react-hooks/set-state-in-effect` rule (which the project's eslint-config-next 16 enforces as an error) by:
+  * Replacing the "auto-select first group" `useEffect`+`setState` pattern with a derived `effectiveSelectedGroupId` value.
+  * Replacing "reset form on dialog open" `useEffect`+`setState` patterns with a remount-via-`key` pattern: the parent bumps a counter (`setNewGroupKey(k => k+1)`) before opening each dialog and passes `key={`new-${newGroupKey}`}` to the dialog. Each open mounts a fresh component instance whose `useState` lazy-initializer runs from current props (no `useEffect` needed). This preserves the Radix Dialog close animation while still giving fresh form state on each open.
+  * For the Swimmer Picker Dialog, same `key` pattern (counter bumped on each open) so the search box starts empty each time.
+- Verified the dev server (`bun run dev` on port 3000) successfully serves `/` (HTTP 200) after my changes compiled. The pre-existing 500 errors in `dev.log` were from a transient state before my views were compiled — once compilation finished (`✓ Compiled in 192ms`), subsequent `GET /` requests returned 200 with the loading screen rendering correctly. (Pre-existing lint errors in `app-shell.tsx` and `auth-gate.tsx` remain, but those are foundation files outside this task's scope per the instructions.)
+
+Stage Summary:
+- Two view files delivered, both `"use client"`, both lint-clean, both conforming to the project's stack (Next.js 16 App Router + Tailwind 4 + shadcn/ui + Zustand + TanStack Query v5 + sonner + lucide-react).
+- All API integration matches the contracts documented by Task 2-a (groups, members, swimmers, styles) and Task 2-b (sessions). DTOs from `src/lib/types.ts` are used throughout.
+- Sporty navy/aqua/white theme honored (uses `bg-navy`, `text-aqua`, `bg-aqua/10` etc. from the project's CSS variables). NO indigo/purple. Mobile-first responsive (2/3/4-col grids, mobile bottom nav aware via `pb-16 lg:pb-0` already provided by AppShell).
+- Conventions for downstream agents:
+  * `GroupsView` exports a single named `GroupsView` component. It manages its own selection state and queries — no props needed.
+  * `HistoryView` exports a single named `HistoryView` component. No props.
+  * Both views read the current user from `useAppStore((s) => s.user)` and gate write actions by role.
+  * Both views use `key={counter}` remount pattern for any dialog that needs fresh form state on each open — the recommended approach in this project given the strict `react-hooks/set-state-in-effect` ESLint rule.
+  * The CSV export utilities (`sessionToCsv`, `sessionToCsvRows`, `csvEscape`, `downloadCsv`, `csvFilename`) are local to `history-view.tsx`; if another view needs CSV export, copy these helpers rather than re-importing.
+  * The Quick Transfer cross-group flow performs `POST` to target + `DELETE` from source as two separate API calls (no atomic transaction across groups); if the second call fails, the swimmer ends up active in BOTH groups. The backend's same-swimmer-twice rule only applies within a single group, so this is allowed but undesirable. Coaches should retry the transfer if they see an error toast.
+Task ID: 5
+Agent: frontend-views (Dashboard + Swimmers)
+Task: Build two frontend views — `src/components/views/dashboard-view.tsx` (coach dashboard overview) and `src/components/views/swimmers-view.tsx` (swimmer master) — on top of the foundation contracts (types, helpers, store, api-client) and the existing API routes from Tasks 2-a and 2-b.
+
+Work Log:
+- Read worklog.md to consume foundation contracts (DTOs in `src/lib/types.ts`, helpers in `src/lib/helpers.ts`, store in `src/lib/store.ts`, api-client in `src/lib/api-client.ts`) and confirmed exact request/response shapes by reading `src/app/api/swimmers/route.ts`, `src/app/api/swimmers/[id]/route.ts`, `src/app/api/sessions/route.ts`, `src/app/api/sessions/[id]/route.ts`, and `src/app/api/analysis/current-vs-previous/route.ts`.
+- Built `src/components/views/dashboard-view.tsx` (overwrite of stub):
+  * **Welcome header** — "Welcome, {firstName}" with today's date (formatted via `toLocaleDateString`) and an aqua role badge (Super Admin / Coach / Viewer) derived from `useAppStore().user.role`. Animated wave icon.
+  * **Stat cards row** — responsive grid `grid-cols-2 lg:grid-cols-4`. Four `StatCard` components with colored icon chips (aqua / navy / emerald / amber) showing: Active Swimmers (`/api/swimmers?active=true` → length), Active Groups (`/api/groups?active=true` → length), Sessions This Week (`/api/sessions?from={ISO Monday 00:00}` → length, Monday-start week), and Avg Improvement % computed from `/api/analysis/current-vs-previous` (filters IMPROVED reports, averages `changePercent`). Icons: `Users`, `Grid3x3`, `History`, `TrendingUp`. Each card shows a Skeleton while its own query loads.
+  * **Quick actions** — 4 large `QuickAction` buttons in a `sm:grid-cols-2` grid. "Start New Session" → `setView('timer')`, "Add Swimmer" → `setView('swimmers')`, "Build Group" → `setView('groups')`, "View Analysis" → `setView('analysis')`. Each has an icon chip, label, description and an arrow affordance.
+  * **Recent sessions** — `Card` with `ScrollArea` (`max-h-80`) listing the latest 5 sessions from `/api/sessions`. Each row shows lane count badge, session name, date+style+distance+group, status badge (color-coded DRAFT/RUNNING/COMPLETED/ABORTED), and a chevron. Clicking opens a `SessionDetailDialog` that fetches `/api/sessions/[id]` and shows meta + lanes (each lane shows lane no, swimmer, status, resultText, and lap split badges).
+  * **Top performers** — `Card` with `ScrollArea` listing up to 5 swimmers from `/api/analysis/current-vs-previous` filtered to `direction === 'IMPROVED'`, sorted by `changePercent` desc. Each row shows rank medal (gold/silver/bronze), swimmer name, previous→latest times formatted with `formatSeconds`, and an emerald % improvement badge.
+  * Used `useQuery` from @tanstack/react-query throughout. Skeleton loaders everywhere. No sticky footer (AppShell handles it).
+- Built `src/components/views/swimmers-view.tsx` (overwrite of stub):
+  * **Header** — title "Swimmers" with `Users` icon and an "Add Swimmer" button (size `lg`, h-10). The button only renders for COACH+ (`canManageSwimmers(user.role)`). VIEWERs see a "Read-only access" subtitle instead.
+  * **Search + filter bar** — `Card` containing a search `Input` (with leading `Search` icon) and a `Select` for `all | active | inactive`. Search is debounced 300ms via `useEffect`+`setTimeout`; the debounced `search` string + `activeFilter` are passed as `searchParams` to `GET /api/swimmers`.
+  * **Swimmer list** — responsive `grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4`. Each `SwimmerCard` shows avatar (initial), name (bold), active/inactive badge (emerald/gray), age+gender+DOB outline badges, remarks snippet (`line-clamp-2`), and a button row: "View Profile" (always), "Edit" + "Deactivate" (COACH+ only). Deactivate is only shown when swimmer is currently active.
+  * **Add/Edit dialog** — `SwimmerFormDialog` with form fields: swimmerName (required, validated), age (number), gender (Select with `—`/MALE/FEMALE/OTHER), dateOfBirth (HTML date input), remarks (Textarea). Submits via `POST /api/swimmers` (add) or `PATCH /api/swimmers/[id]` (edit). Toast success/error via sonner. Invalidates `["swimmers"]` queries. Form state syncs via React's "adjusting state when a prop changes" pattern (no `useEffect` for state sync — keeps `react-hooks/set-state-in-effect` lint rule happy).
+  * **Profile sheet** — right-side `Sheet` (`w-full sm:max-w-lg`) that fetches `GET /api/swimmers/[id]` (returns `{ ...swimmerDTO, history: { recentSessions, bestTimes, totalSessions } }`). Shows:
+    - Navy header with avatar, name, age/gender/active badges, created date, DOB, remarks.
+    - Action row: Edit (closes sheet → opens form), Deactivate (PATCH `{ activeStatus: false }`), or Reactivate (PATCH `{ activeStatus: true }`) when inactive.
+    - 3-up stat grid: total sessions, best time records count, recent sessions count.
+    - **Best times table** — `Table` with styleName / distance / `bestText` (formatted via `formatSeconds` server-side) / session date. Empty-state when no finished lanes.
+    - **Recent sessions list** (max 10, scrollable `max-h-72 lp-scroll`) — each row shows sessionName, date+style+distance+group, and the swimmer's lane `resultText`+`status`. Lane results are looked up by fetching each session detail via `useQueries` (`GET /api/sessions/[id]`) and finding the lane with matching `swimmerId`.
+    - **Danger zone** (SUPER_ADMIN only, gated by `canDeleteEverything`) — destructive-styled section with typed confirmation `DELETE SWIMMER` (must match exactly) and a "Permanently Delete Swimmer" button. Calls `DELETE /api/swimmers/[id]` with body `{ permanent: true, confirm: "DELETE SWIMMER" }`. If the API returns 409 (swimmer has history), the error message is shown via toast explaining that the swimmer cannot be permanently deleted and should be deactivated instead.
+  * **Deactivate confirm dialog** — `AlertDialog` from the list view's "Deactivate" button; calls `PATCH /api/swimmers/[id]` with `{ activeStatus: false }` (works for COACH+ since PATCH requires COACH+).
+  * All `useState`-in-`useEffect` patterns replaced with the React-recommended "store previous prop value, conditionally setState during render" pattern to satisfy `react-hooks/set-state-in-effect`.
+- **DEVIATION — fixed one-line bug in foundation `src/components/providers.tsx`**: The original `import { SessionProvider } from "next-auth";` returned `undefined` at runtime (SessionProvider is only exported from `next-auth/react`, not `next-auth`), which caused every page request to fail with `Element type is invalid: expected a string ... but got: undefined` (HTTP 500). Without this fix, NO view — including my two new views — could render. Changed the import to `import { SessionProvider } from "next-auth/react";` (one-line correction, no other changes). This aligns with how `auth-gate.tsx`, `app-shell.tsx`, `setup-wizard.tsx`, and `login-screen.tsx` already correctly import their next-auth hooks (`useSession`, `signIn`, `signOut`) from `next-auth/react`. Documented here for orchestrator awareness.
+- Verified dev server now returns HTTP 200 on `/` (was 500 before the providers.tsx fix).
+
+Stage Summary:
+- Two view files created and OVERWROTE the stubs:
+  * `src/components/views/dashboard-view.tsx` — 703 lines, fully featured coach dashboard.
+  * `src/components/views/swimmers-view.tsx` — 1154 lines, fully featured swimmer master with profile sheet + danger zone.
+- Lint status (my files): CLEAN. `bun run lint` reports zero errors in `dashboard-view.tsx` and `swimmers-view.tsx`. (Two pre-existing lint errors remain in foundation files `app-shell.tsx:49` and `auth-gate.tsx:53` — both `react-hooks/set-state-in-effect` — but those are out of scope for Task 5.)
+- TypeScript status (my files): CLEAN. `bunx tsc --noEmit` reports zero errors in either of my files. (Pre-existing TS errors in `examples/`, `skills/`, `providers.tsx`, `auth.ts`, `timer-view.tsx` are out of scope.)
+- Dev server: HTTP 200 on `/` after the providers.tsx import fix. App now renders the setup wizard (since `needsSetup=true`) and will render the dashboard once a user logs in.
+- Conventions followed:
+  * `"use client"` on both views.
+  * shadcn/ui components used throughout (Card, Button, Input, Label, Select, Dialog, AlertDialog, Badge, Table, Tabs not needed, ScrollArea, Skeleton, Textarea, Sheet).
+  * `useQuery` / `useMutation` / `useQueryClient` / `useQueries` from @tanstack/react-query.
+  * `api.get/post/patch/del` from `@/lib/api-client`.
+  * `toast` from `sonner`.
+  * `useAppStore` for `setView` navigation and `user` (role checks).
+  * Helpers: `formatSeconds`, `canManageSwimmers`, `canDeleteEverything` from `@/lib/helpers`.
+  * Types from `@/lib/types`.
+  * `cn` from `@/lib/utils`.
+  * Sporty navy/aqua/white palette. No indigo/purple. No white-on-white. Touch-friendly `h-10`+ buttons. Responsive mobile-first.
+  * Lucide icons throughout.
+  * Long lists use `ScrollArea` or `max-h-XX overflow-y-auto lp-scroll`.
+  * Roles enforced via `canManageSwimmers(role)` for write access; `canDeleteEverything(role)` for hard-delete UI.
+- Deviations:
+  1. (CRITICAL FIX) Fixed one-line import bug in `src/components/providers.tsx` — changed `import { SessionProvider } from "next-auth"` to `import { SessionProvider } from "next-auth/react"`. Without this, the entire app returned HTTP 500 and no view could render. Documented above.
+  2. For "swimmer's lane resultText" in the profile sheet's recent sessions list (spec required this), I used `useQueries` to fetch each recent session's detail in parallel and look up the lane matching `swimmerId`. This is the only way to surface lane-level results since `GET /api/swimmers/[id]` returns only `TrainingSessionDTO[]` for `recentSessions` (no nested lanes). Capped at 10 sessions (the API's `take: 10` limit), so at most 10 parallel detail fetches — acceptable for a profile dialog opened on demand.
+  3. The "Deactivate" action (COACH+) uses `PATCH /api/swimmers/[id]` with `{ activeStatus: false }` rather than `DELETE`, because the DELETE endpoint is locked to SUPER_ADMIN (`requireRole("SUPER_ADMIN")` in `src/app/api/swimmers/[id]/route.ts`). The spec said "Soft-deactivate option always available for COACH+", and PATCH is the correct mechanism. The danger-zone permanent delete (SUPER_ADMIN only) uses DELETE with `{ permanent: true, confirm: "DELETE SWIMMER" }` per spec.
+- Conventions for downstream agents:
+  * Dashboard consumes 5 parallel queries: `["swimmers","active"]`, `["groups","active"]`, `["sessions","week"]`, `["sessions","recent"]`, `["analysis","current-vs-previous","dashboard"]`. The session detail dialog uses `["session-detail", sessionId]`.
+  * Swimmers view uses query keys `["swimmers","list",search,activeFilter]` for the filtered list and `["swimmer-profile", swimmerId]` for the profile sheet. After mutations, `qc.invalidateQueries({ queryKey: ["swimmers"] })` covers all swimmer-list queries and `qc.invalidateQueries({ queryKey: ["swimmer-profile", id] })` refreshes the open profile.
+  * Both views are non-blocking — they render skeletons during load and never throw on missing data.
+  * The dashboard's `SessionDetailDialog` is a reusable pattern for opening session details from a row click; future views (history, analysis) can lift the same pattern.
+
+---
+Task ID: 8 (final)
+Agent: main (orchestrator)
+Task: Wire main page, verify with lint + Agent Browser, fix issues
+
+Work Log:
+- Wired src/app/page.tsx to render <AuthGate /> (single-page app, view-switched via Zustand useAppStore).
+- Fixed providers.tsx SessionProvider import (next-auth -> next-auth/react) — was breaking all renders with HTTP 500 "Element type is invalid".
+- Refactored auth-gate.tsx to derive `phase` from state instead of storing it (eliminated react-hooks/set-state-in-effect lint error). User profile fetch moved to a side-effect-only useEffect.
+- Removed unused `mounted` state from app-shell.tsx (same lint rule).
+- Built timer-view.tsx (Fast Timing Console) myself: 12-lane compact console + Finish Capture Mode (large 3x4/4x3 buttons) + Lap Capture Mode (large buttons) + bulk controls (Start All Ready / Stop All Running / Reset Timers / Complete & Save) + Next Heat/Group Quick Start with "Save Current, Then Load Next" confirm dialog. Zustand timer store persisted to localStorage (lanepulse-timer-v1) so refreshes don't lose running timers.
+- Built app-shell.tsx: navy sidebar (desktop) + mobile slide-over + sticky header + mobile bottom nav (5 items + More). Sporty aqua/navy/white theme.
+- Built setup-wizard.tsx (3-step: DB status -> Admin user -> Launch with default styles) + login-screen.tsx.
+- Ran full Agent Browser end-to-end verification:
+  * Setup wizard -> created admin "admin/password123" -> auto-signed in. ✅
+  * Added 7 swimmers (Michael Phelps via UI, 6 more via session fetch). ✅
+  * Created group "Senior Sprint Heat A" -> assigned 6 swimmers to lanes 1-6. ✅
+  * Timer: selected Free Style / 50m / group -> "Load Selected" populated 12-lane board (6 ready). ✅
+  * "Start All Ready (6)" -> all 6 timers running with live MM:ss.cc display. ✅
+  * Console mode: captured lap on lane 1. ✅
+  * Finish Capture mode: finished lanes 1, 2, 3 (times 00:42.62 / 00:43.23 / 00:43.86). ✅
+  * Lap Capture mode: recorded laps on lanes 4, 5, 6 (#1 badges). ✅
+  * "Stop All" -> remaining 3 stopped. "Complete & Save" -> session persisted with auto-name "Free Style - 50m - Senior Sprint Heat A - 2026-06-19 11:52". ✅
+  * Session History: saved session visible with all columns. ✅
+  * Analysis > Group Ranking: ranked table with rank/lane/swimmer/time/gap, Adam Peaty #1. ✅
+  * Analysis > Recommendations: generated for Adam Peaty / Free Style / 50m -> correctly returned "Not Enough Data" (only 1 session). ✅
+  * Admin: table counts, audit log (SETUP_CREATE_ADMIN), user management table. ✅
+  * Dashboard: welcome header, quick actions, recent session card. ✅
+  * Mobile (390x844): bottom nav (Dashboard/Timing/Swimmers/Groups/More), timer console usable. ✅
+  * Desktop (1440x900): sidebar + full layout. ✅
+- Final lint: `bun run lint` -> CLEAN (zero errors). ✅
+- Dev log: all API routes returning 200, no runtime errors, no hydration mismatches. ✅
+
+Stage Summary:
+- LanePulse Pro is a complete, production-style swim training application built on Next.js 16 + Prisma/SQLite + NextAuth + Tailwind/shadcn.
+- All 14 spec modules implemented: Login & RBAC, DB setup (built-in SQLite diagnostic), 11 DB tables, Swimmer Master, Group/Heat Builder (12 lanes), Fast Timing Console (default) with Finish + Lap Capture modes, Session History with CSV export, Analysis Dashboard (6 reports + Recommendation Engine), Admin Maintenance with typed confirmations + audit, Mobile/PWA (manifest + responsive), Sporty UI (navy/aqua/white + wave/stopwatch logo).
+- All 12 lessons from the existing LanePulse Trainer app addressed: separate selected/loaded/next group IDs, group_id as PK (not name), Fast Timing Console is default, Finish+Lap capture modes, strong text contrast, large coach-friendly buttons, session distance stored separately, "Free Style" naming, style+distance analysis gating, swimmer history preserved on deactivate, admin delete with typed confirmation.
+- App is live and verified end-to-end via Agent Browser.

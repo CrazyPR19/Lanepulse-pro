@@ -1,0 +1,935 @@
+     1→"use client";
+     2→
+     3→// LanePulse Pro - Timer View (Fast Timing Console)
+     4→// DEFAULT screen per spec. Includes Finish Capture Mode + Lap Capture Mode + bulk controls + next heat.
+     5→
+     6→import { useEffect, useState, useMemo, useCallback } from "react";
+     7→import { useTimerStore, useTick, liveElapsedMs } from "@/lib/store";
+     8→import { api } from "@/lib/api-client";
+     9→import type {
+    10→  SwimmingStyleDTO,
+    11→  TrainingGroupDTO,
+    12→  GroupMemberDTO,
+    13→  LiveLaneState,
+    14→  LaneStatus,
+    15→  TimerMode,
+    16→} from "@/lib/types";
+    17→import { POOL_LANES, formatMs, buildSessionName } from "@/lib/helpers";
+    18→import { Button } from "@/components/ui/button";
+    19→import { Input } from "@/components/ui/input";
+    20→import { Label } from "@/components/ui/label";
+    21→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+    22→import { Badge } from "@/components/ui/badge";
+    23→import {
+    24→  Select,
+    25→  SelectContent,
+    26→  SelectItem,
+    27→  SelectTrigger,
+    28→  SelectValue,
+    29→} from "@/components/ui/select";
+    30→import {
+    31→  Play,
+    32→  Square,
+    33→  RotateCcw,
+    34→  Flag,
+    35→  Timer as TimerIcon,
+    36→  LayoutGrid,
+    37→  Zap,
+    38→  Save,
+    39→  ChevronRight,
+    40→  Layers,
+    41→  CheckCircle2,
+    42→  AlertTriangle,
+    43→  Waves,
+    44→  FastForward,
+    45→} from "lucide-react";
+    46→import { cn } from "@/lib/utils";
+    47→import { toast } from "sonner";
+    48→import {
+    49→  AlertDialog,
+    50→  AlertDialogAction,
+    51→  AlertDialogCancel,
+    52→  AlertDialogContent,
+    53→  AlertDialogDescription,
+    54→  AlertDialogFooter,
+    55→  AlertDialogHeader,
+    56→  AlertDialogTitle,
+    57→  AlertDialogTrigger,
+    58→} from "@/components/ui/alert-dialog";
+    59→
+    60→const STATUS_COLORS: Record<LaneStatus, string> = {
+    61→  IDLE: "bg-muted text-muted-foreground",
+    62→  READY: "bg-blue-100 text-blue-700 border border-blue-300",
+    63→  RUNNING: "bg-aqua text-white lp-running-pulse",
+    64→  FINISHED: "bg-green-600 text-white",
+    65→  DNF: "bg-red-500 text-white",
+    66→};
+    67→
+    68→const STATUS_LABEL: Record<LaneStatus, string> = {
+    69→  IDLE: "Idle",
+    70→  READY: "Ready",
+    71→  RUNNING: "Running",
+    72→  FINISHED: "Finished",
+    73→  DNF: "DNF",
+    74→};
+    75→
+    76→export function TimerView() {
+    77→  const tick = useTick(50); // re-render every 50ms for live timers
+    78→
+    79→  const {
+    80→    selectedGroupId,
+    81→    selectedGroupName,
+    82→    loadedGroupId,
+    83→    loadedGroupName,
+    84→    nextGroupId,
+    85→    nextGroupName,
+    86→    meta,
+    87→    lanes,
+    88→    mode,
+    89→    dirty,
+    90→    setSelectedGroup,
+    91→    setNextGroup,
+    92→    setMeta,
+    93→    setMode,
+    94→    loadSelectedGroup,
+    95→    loadNextGroup,
+    96→    startLane,
+    97→    stopLane,
+    98→    lapLane,
+    99→    resetLane,
+   100→    startAllReady,
+   101→    stopAllRunning,
+   102→    resetAll,
+   103→    markSaved,
+   104→    clearAll,
+   105→  } = useTimerStore();
+   106→
+   107→  const [styles, setStyles] = useState<SwimmingStyleDTO[]>([]);
+   108→  const [groups, setGroups] = useState<TrainingGroupDTO[]>([]);
+   109→  const [saving, setSaving] = useState(false);
+   110→
+   111→  // Load styles + groups
+   112→  useEffect(() => {
+   113→    api.get<SwimmingStyleDTO[]>("/api/styles").then(setStyles).catch(() => {});
+   114→    api.get<TrainingGroupDTO[]>("/api/groups?active=true").then(setGroups).catch(() => {});
+   115→  }, []);
+   116→
+   117→  // Auto-set style name when styleId changes
+   118→  useEffect(() => {
+   119→    if (meta.styleId && styles.length) {
+   120→      const s = styles.find((x) => x.id === meta.styleId);
+   121→      if (s && s.styleName !== meta.styleName) {
+   122→        setMeta({ styleName: s.styleName });
+   123→      }
+   124→    }
+   125→  }, [meta.styleId, styles, meta.styleName, setMeta]);
+   126→
+   127→  // Load selected group members into the board
+   128→  const handleLoadSelectedGroup = useCallback(async () => {
+   129→    if (!selectedGroupId) {
+   130→      toast.error("Select a group first");
+   131→      return;
+   132→    }
+   133→    try {
+   134→      const grp = await api.get<{ members: GroupMemberDTO[] }>(
+   135→        `/api/groups/${selectedGroupId}`
+   136→      );
+   137→      loadSelectedGroup(grp.members);
+   138→      toast.success(`Loaded group: ${selectedGroupName}`);
+   139→    } catch (e: any) {
+   140→      toast.error(e.message || "Failed to load group");
+   141→    }
+   142→  }, [selectedGroupId, selectedGroupName, loadSelectedGroup]);
+   143→
+   144→  // Save current session
+   145→  const handleSaveSession = useCallback(
+   146→    async (opts?: { thenLoadNext?: boolean }) => {
+   147→      if (!meta.styleId) {
+   148→        toast.error("Select a swimming style");
+   149→        return;
+   150→      }
+   151→      if (!loadedGroupId) {
+   152→        toast.error("No group is loaded on the timing board");
+   153→        return;
+   154→      }
+   155→      // Require at least one finished lane
+   156→      const hasFinished = lanes.some((l) => l.status === "FINISHED");
+   157→      if (!hasFinished) {
+   158→        toast.error("No finished lanes to save. Stop at least one lane first.");
+   159→        return;
+   160→      }
+   161→      setSaving(true);
+   162→      try {
+   163→        const payload = {
+   164→          sessionName:
+   165→            meta.sessionName ||
+   166→            buildSessionName(
+   167→              meta.styleName,
+   168→              meta.distanceMeters,
+   169→              loadedGroupName || "Group",
+   170→              new Date(meta.sessionDate)
+   171→            ),
+   172→          sessionDate: meta.sessionDate,
+   173→          styleId: meta.styleId,
+   174→          distanceMeters: meta.distanceMeters,
+   175→          groupId: loadedGroupId,
+   176→          remarks: meta.remarks,
+   177→          status: "COMPLETED" as const,
+   178→          sessionStartTime: meta.sessionStartTime || null,
+   179→          sessionEndTime: new Date().toISOString(),
+   180→          lanes: lanes
+   181→            .filter((l) => l.swimmerId || l.status === "FINISHED")
+   182→            .map((l) => ({
+   183→              laneNo: l.laneNo,
+   184→              swimmerId: l.swimmerId,
+   185→              groupId: loadedGroupId,
+   186→              startTime:
+   187→                l.startedAt !== null
+   188→                  ? new Date(l.startedAt).toISOString()
+   189→                  : null,
+   190→              stopTime:
+   191→                l.stoppedAt !== null
+   192→                  ? new Date(l.stoppedAt).toISOString()
+   193→                  : null,
+   194→              elapsedSeconds:
+   195→                l.status === "FINISHED"
+   196→                  ? liveElapsedMs(l) / 1000
+   197→                  : null,
+   198→              resultText:
+   199→                l.status === "FINISHED"
+   200→                  ? formatMs(liveElapsedMs(l))
+   201→                  : l.status === "DNF"
+   202→                  ? "DNF"
+   203→                  : null,
+   204→              status: l.status,
+   205→              laps: l.laps.map((lap) => ({
+   206→                lapNo: lap.lapNo,
+   207→                lapTimeSeconds: lap.lapMs / 1000,
+   208→                lapTimeText: formatMs(lap.lapMs),
+   209→                cumulativeSeconds: lap.cumulativeMs / 1000,
+   210→              })),
+   211→            })),
+   212→        };
+   213→        await api.post("/api/sessions", payload);
+   214→        markSaved();
+   215→        toast.success("Session saved successfully!");
+   216→
+   217→        if (opts?.thenLoadNext) {
+   218→          if (!nextGroupId) {
+   219→            toast.error("No next group selected");
+   220→            return;
+   221→          }
+   222→          const nextGrp = await api.get<{ members: GroupMemberDTO[] }>(
+   223→            `/api/groups/${nextGroupId}`
+   224→          );
+   225→          loadNextGroup(nextGrp.members);
+   226→          toast.success(`Loaded next group: ${nextGroupName}`);
+   227→        } else {
+   228→          clearAll();
+   229→        }
+   230→      } catch (e: any) {
+   231→        toast.error(e.message || "Failed to save session");
+   232→      } finally {
+   233→        setSaving(false);
+   234→      }
+   235→    },
+   236→    [
+   237→      meta,
+   238→      lanes,
+   239→      loadedGroupId,
+   240→      loadedGroupName,
+   241→      nextGroupId,
+   242→      nextGroupName,
+   243→      markSaved,
+   244→      clearAll,
+   245→      loadNextGroup,
+   246→    ]
+   247→  );
+   248→
+   249→  const stats = useMemo(() => {
+   250→    const running = lanes.filter((l) => l.status === "RUNNING").length;
+   251→    const finished = lanes.filter((l) => l.status === "FINISHED").length;
+   252→    const ready = lanes.filter((l) => l.status === "READY").length;
+   253→    return { running, finished, ready };
+   254→  }, [lanes]);
+   255→
+   256→  const hasRunning = stats.running > 0;
+   257→
+   258→  return (
+   259→    <div className="space-y-3 sm:space-y-4">
+   260→      {/* Title bar */}
+   261→      <div className="flex flex-wrap items-center justify-between gap-2">
+   262→        <div className="flex items-center gap-2">
+   263→          <TimerIcon className="size-5 text-aqua" />
+   264→          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+   265→            Fast Timing Console
+   266→          </h1>
+   267→          {dirty && (
+   268→            <Badge className="bg-amber-500 hover:bg-amber-500 text-white">
+   269→              <AlertTriangle className="size-3 mr-1" /> Unsaved
+   270→            </Badge>
+   271→          )}
+   272→        </div>
+   273→        <div className="flex items-center gap-1.5">
+   274→          <ModeButton
+   275→            active={mode === "console"}
+   276→            onClick={() => setMode("console")}
+   277→            icon={LayoutGrid}
+   278→            label="Console"
+   279→          />
+   280→          <ModeButton
+   281→            active={mode === "finish"}
+   282→            onClick={() => setMode("finish")}
+   283→            icon={Flag}
+   284→            label="Finish"
+   285→          />
+   286→          <ModeButton
+   287→            active={mode === "lap"}
+   288→            onClick={() => setMode("lap")}
+   289→            icon={Zap}
+   290→            label="Lap"
+   291→          />
+   292→        </div>
+   293→      </div>
+   294→
+   295→      {/* Session setup + status panel */}
+   296→      <Card className="border-aqua/20">
+   297→        <CardHeader className="pb-3">
+   298→          <CardTitle className="text-sm flex items-center gap-2">
+   299→            <Waves className="size-4 text-aqua" /> Session Setup & Status
+   300→          </CardTitle>
+   301→        </CardHeader>
+   302→        <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+   303→          <div className="space-y-1">
+   304→            <Label className="text-xs text-muted-foreground">Session Date</Label>
+   305→            <Input
+   306→              type="date"
+   307→              value={meta.sessionDate.slice(0, 10)}
+   308→              onChange={(e) =>
+   309→                setMeta({
+   310→                  sessionDate: new Date(e.target.value).toISOString(),
+   311→                })
+   312→              }
+   313→              className="h-9"
+   314→            />
+   315→          </div>
+   316→          <div className="space-y-1">
+   317→            <Label className="text-xs text-muted-foreground">Style</Label>
+   318→            <Select
+   319→              value={meta.styleId}
+   320→              onValueChange={(v) => setMeta({ styleId: v })}
+   321→            >
+   322→              <SelectTrigger className="h-9">
+   323→                <SelectValue placeholder="Select style" />
+   324→              </SelectTrigger>
+   325→              <SelectContent>
+   326→                {styles.map((s) => (
+   327→                  <SelectItem key={s.id} value={s.id}>
+   328→                    {s.styleName}
+   329→                  </SelectItem>
+   330→                ))}
+   331→              </SelectContent>
+   332→            </Select>
+   333→          </div>
+   334→          <div className="space-y-1">
+   335→            <Label className="text-xs text-muted-foreground">Distance (m)</Label>
+   336→            <Select
+   337→              value={String(meta.distanceMeters)}
+   338→              onValueChange={(v) => setMeta({ distanceMeters: Number(v) })}
+   339→            >
+   340→              <SelectTrigger className="h-9">
+   341→                <SelectValue />
+   342→              </SelectTrigger>
+   343→              <SelectContent>
+   344→                {[25, 50, 100, 200, 400, 800, 1500].map((d) => (
+   345→                  <SelectItem key={d} value={String(d)}>
+   346→                    {d}m
+   347→                  </SelectItem>
+   348→                ))}
+   349→              </SelectContent>
+   350→            </Select>
+   351→          </div>
+   352→          <div className="space-y-1">
+   353→            <Label className="text-xs text-muted-foreground">Session Name</Label>
+   354→            <Input
+   355→              value={meta.sessionName}
+   356→              onChange={(e) => setMeta({ sessionName: e.target.value })}
+   357→              placeholder="Auto-generated if blank"
+   358→              className="h-9"
+   359→            />
+   360→          </div>
+   361→          <div className="space-y-1">
+   362→            <Label className="text-xs text-muted-foreground">Select Group</Label>
+   363→            <Select
+   364→              value={selectedGroupId || ""}
+   365→              onValueChange={(v) => {
+   366→                const g = groups.find((x) => x.id === v);
+   367→                setSelectedGroup(v, g?.groupName || null);
+   368→              }}
+   369→            >
+   370→              <SelectTrigger className="h-9">
+   371→                <SelectValue placeholder="Choose group" />
+   372→              </SelectTrigger>
+   373→              <SelectContent>
+   374→                {groups.map((g) => (
+   375→                  <SelectItem key={g.id} value={g.id}>
+   376→                    {g.groupName}
+   377→                    {g.memberCount ? ` (${g.memberCount})` : ""}
+   378→                  </SelectItem>
+   379→                ))}
+   380→              </SelectContent>
+   381→            </Select>
+   382→          </div>
+   383→          <div className="space-y-1">
+   384→            <Label className="text-xs text-muted-foreground">Action</Label>
+   385→            <Button
+   386→              onClick={handleLoadSelectedGroup}
+   387→              disabled={!selectedGroupId}
+   388→              className="w-full h-9 bg-navy hover:bg-navy/90"
+   389→              size="sm"
+   390→            >
+   391→              <Layers className="size-3.5" /> Load Selected
+   392→            </Button>
+   393→          </div>
+   394→        </CardContent>
+   395→
+   396→        {/* Status panel */}
+   397→        <div className="px-6 pb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 border-t pt-3 mt-1">
+   398→          <StatusChip
+   399→            label="Selected Group"
+   400→            value={selectedGroupName || "—"}
+   401→            color="text-foreground"
+   402→          />
+   403→          <StatusChip
+   404→            label="Loaded Group"
+   405→            value={loadedGroupName || "—"}
+   406→            color="text-aqua font-semibold"
+   407→          />
+   408→          <StatusChip label="Style" value={meta.styleName || "—"} />
+   409→          <StatusChip label="Distance" value={`${meta.distanceMeters}m`} />
+   410→          <StatusChip
+   411→            label="Session Status"
+   412→            value={meta.status}
+   413→            color={
+   414→              meta.status === "COMPLETED"
+   415→                ? "text-green-600 font-semibold"
+   416→                : meta.status === "RUNNING"
+   417→                ? "text-aqua font-semibold"
+   418→                : "text-muted-foreground"
+   419→            }
+   420→          />
+   421→        </div>
+   422→      </Card>
+   423→
+   424→      {/* Bulk controls */}
+   425→      <div className="flex flex-wrap items-center gap-2">
+   426→        <Button
+   427→          onClick={startAllReady}
+   428→          disabled={stats.ready === 0}
+   429→          className="bg-green-600 hover:bg-green-700 text-white h-10"
+   430→        >
+   431→          <Play className="size-4" /> Start All Ready ({stats.ready})
+   432→        </Button>
+   433→        <Button
+   434→          onClick={stopAllRunning}
+   435→          disabled={stats.running === 0}
+   436→          variant="destructive"
+   437→          className="h-10"
+   438→        >
+   439→          <Square className="size-4" /> Stop All ({stats.running})
+   440→        </Button>
+   441→        <Button
+   442→          onClick={resetAll}
+   443→          variant="outline"
+   444→          className="h-10"
+   445→          disabled={!dirty}
+   446→        >
+   447→          <RotateCcw className="size-4" /> Reset Timers
+   448→        </Button>
+   449→        <div className="flex-1" />
+   450→        <Button
+   451→          onClick={() => handleSaveSession()}
+   452→          disabled={saving || stats.finished === 0}
+   453→          className="bg-aqua hover:bg-aqua/90 text-white h-10"
+   454→        >
+   455→          <Save className="size-4" /> {saving ? "Saving…" : "Complete & Save"}
+   456→        </Button>
+   457→      </div>
+   458→
+   459→      {/* Main mode area */}
+   460→      {mode === "console" && (
+   461→        <ConsoleView lanes={lanes} tick={tick} hasRunning={hasRunning}
+   462→          onStart={startLane} onStop={stopLane} onLap={lapLane} onReset={resetLane} />
+   463→      )}
+   464→      {mode === "finish" && (
+   465→        <FinishCaptureView lanes={lanes} tick={tick} onFinish={stopLane} />
+   466→      )}
+   467→      {mode === "lap" && (
+   468→        <LapCaptureView lanes={lanes} tick={tick} onLap={lapLane} />
+   469→      )}
+   470→
+   471→      {/* Next Heat / Next Group Quick Start */}
+   472→      <Card className="border-navy/20">
+   473→        <CardHeader className="pb-3">
+   474→          <CardTitle className="text-sm flex items-center gap-2">
+   475→            <FastForward className="size-4 text-navy" /> Next Heat / Next Group
+   476→            Quick Start
+   477→          </CardTitle>
+   478→        </CardHeader>
+   479→        <CardContent className="flex flex-wrap items-end gap-3">
+   480→          <div className="space-y-1 min-w-[180px] flex-1">
+   481→            <Label className="text-xs text-muted-foreground">
+   482→              Next Group (separate from selected)
+   483→            </Label>
+   484→            <Select
+   485→              value={nextGroupId || ""}
+   486→              onValueChange={(v) => {
+   487→                const g = groups.find((x) => x.id === v);
+   488→                setNextGroup(v, g?.groupName || null);
+   489→              }}
+   490→            >
+   491→              <SelectTrigger className="h-9">
+   492→                <SelectValue placeholder="Choose next group" />
+   493→              </SelectTrigger>
+   494→              <SelectContent>
+   495→                {groups.map((g) => (
+   496→                  <SelectItem key={g.id} value={g.id}>
+   497→                    {g.groupName}
+   498→                  </SelectItem>
+   499→                ))}
+   500→              </SelectContent>
+   501→            </Select>
+   502→          </div>
+   503→          <Button
+   504→            variant="outline"
+   505→            onClick={async () => {
+   506→              if (!nextGroupId) {
+   507→                toast.error("Select a next group first");
+   508→                return;
+   509→              }
+   510→              if (dirty && stats.finished > 0) {
+   511→                toast.message("You have unsaved timings. Save & Load Next instead.");
+   512→                return;
+   513→              }
+   514→              try {
+   515→                const g = await api.get<{ members: GroupMemberDTO[] }>(
+   516→                  `/api/groups/${nextGroupId}`
+   517→                );
+   518→                loadNextGroup(g.members);
+   519→                toast.success(`Loaded next group: ${nextGroupName}`);
+   520→              } catch (e: any) {
+   521→                toast.error(e.message);
+   522→              }
+   523→            }}
+   524→            disabled={!nextGroupId}
+   525→            className="h-9"
+   526→          >
+   527→            <Layers className="size-3.5" /> Load Next Group
+   528→          </Button>
+   529→          <AlertDialog>
+   530→            <AlertDialogTrigger asChild>
+   531→              <Button
+   532→                disabled={!nextGroupId || saving || stats.finished === 0}
+   533→                className="bg-navy hover:bg-navy/90 text-white h-9"
+   534→              >
+   535→                <Save className="size-3.5" /> Save Current, Then Load Next
+   536→                <ChevronRight className="size-3.5" />
+   537→              </Button>
+   538→            </AlertDialogTrigger>
+   539→            <AlertDialogContent>
+   540→              <AlertDialogHeader>
+   541→                <AlertDialogTitle>
+   542→                  Save current session & load next group?
+   543→                </AlertDialogTitle>
+   544→                <AlertDialogDescription>
+   545→                  This will save the current session as COMPLETED and immediately
+   546→                  load the next group <strong>{nextGroupName}</strong> with a fresh
+   547→                  timing board. A new auto-named session will start.
+   548→                </AlertDialogDescription>
+   549→              </AlertDialogHeader>
+   550→              <AlertDialogFooter>
+   551→                <AlertDialogCancel>Cancel</AlertDialogCancel>
+   552→                <AlertDialogAction
+   553→                  onClick={() => handleSaveSession({ thenLoadNext: true })}
+   554→                  className="bg-navy hover:bg-navy/90"
+   555→                >
+   556→                  Save & Load Next
+   557→                </AlertDialogAction>
+   558→              </AlertDialogFooter>
+   559→            </AlertDialogContent>
+   560→          </AlertDialog>
+   561→          <div className="text-xs text-muted-foreground ml-auto">
+   562→            Auto-name: <code className="text-[10px] bg-muted px-1 py-0.5 rounded">
+   563→              Style - Xm - Group - yyyy-mm-dd HH:mm
+   564→            </code>
+   565→          </div>
+   566→        </CardContent>
+   567→      </Card>
+   568→    </div>
+   569→  );
+   570→}
+   571→
+   572→// ============================================================
+   573→// Mode buttons
+   574→// ============================================================
+   575→
+   576→function ModeButton({
+   577→  active,
+   578→  onClick,
+   579→  icon: Icon,
+   580→  label,
+   581→}: {
+   582→  active: boolean;
+   583→  onClick: () => void;
+   584→  icon: React.ComponentType<{ className?: string }>;
+   585→  label: string;
+   586→}) {
+   587→  return (
+   588→    <Button
+   589→      size="sm"
+   590→      variant={active ? "default" : "outline"}
+   591→      onClick={onClick}
+   592→      className={cn(
+   593→        "h-9",
+   594→        active && "bg-aqua hover:bg-aqua/90 text-white"
+   595→      )}
+   596→    >
+   597→      <Icon className="size-3.5" /> {label}
+   598→    </Button>
+   599→  );
+   600→}
+   601→
+   602→function StatusChip({
+   603→  label,
+   604→  value,
+   605→  color = "text-foreground",
+   606→}: {
+   607→  label: string;
+   608→  value: string;
+   609→  color?: string;
+   610→}) {
+   611→  return (
+   612→    <div className="flex flex-col gap-0.5 min-w-0">
+   613→      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+   614→        {label}
+   615→      </span>
+   616→      <span className={cn("text-sm truncate", color)}>{value}</span>
+   617→    </div>
+   618→  );
+   619→}
+   620→
+   621→// ============================================================
+   622→// CONSOLE VIEW — compact 12-lane table
+   623→// ============================================================
+   624→
+   625→function ConsoleView({
+   626→  lanes,
+   627→  tick,
+   628→  hasRunning,
+   629→  onStart,
+   630→  onStop,
+   631→  onLap,
+   632→  onReset,
+   633→}: {
+   634→  lanes: LiveLaneState[];
+   635→  tick: number;
+   636→  hasRunning: boolean;
+   637→  onStart: (n: number) => void;
+   638→  onStop: (n: number) => void;
+   639→  onLap: (n: number) => void;
+   640→  onReset: (n: number) => void;
+   641→}) {
+   642→  // tick is used implicitly to trigger re-render
+   643→  void tick;
+   644→  void hasRunning;
+   645→
+   646→  return (
+   647→    <Card className="overflow-hidden">
+   648→      <CardContent className="p-0">
+   649→        {/* Header row (hidden on mobile) */}
+   650→        <div className="hidden md:grid grid-cols-[48px_1fr_90px_120px_140px_120px] gap-2 px-3 py-2 bg-muted/50 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b">
+   651→          <div>Lane</div>
+   652→          <div>Swimmer</div>
+   653→          <div>Status</div>
+   654→          <div>Live Time</div>
+   655→          <div className="text-center">Controls</div>
+   656→          <div>Last Lap</div>
+   657→        </div>
+   658→        <div className="divide-y">
+   659→          {lanes.map((lane) => (
+   660→            <ConsoleLaneRow
+   661→              key={lane.laneNo}
+   662→              lane={lane}
+   663→              onStart={onStart}
+   664→              onStop={onStop}
+   665→              onLap={onLap}
+   666→              onReset={onReset}
+   667→            />
+   668→          ))}
+   669→        </div>
+   670→      </CardContent>
+   671→    </Card>
+   672→  );
+   673→}
+   674→
+   675→function ConsoleLaneRow({
+   676→  lane,
+   677→  onStart,
+   678→  onStop,
+   679→  onLap,
+   680→  onReset,
+   681→}: {
+   682→  lane: LiveLaneState;
+   683→  onStart: (n: number) => void;
+   684→  onStop: (n: number) => void;
+   685→  onLap: (n: number) => void;
+   686→  onReset: (n: number) => void;
+   687→}) {
+   688→  const elapsed = liveElapsedMs(lane);
+   689→  const isEmpty = !lane.swimmerId;
+   690→
+   691→  return (
+   692→    <div className="grid grid-cols-[40px_1fr_auto] md:grid-cols-[48px_1fr_90px_120px_140px_120px] gap-2 px-3 py-2 items-center text-sm hover:bg-muted/30">
+   693→      {/* Lane number */}
+   694→      <div className="flex items-center justify-center w-10 h-10 rounded-md bg-navy text-white font-bold text-base">
+   695→        {lane.laneNo}
+   696→      </div>
+   697→
+   698→      {/* Swimmer */}
+   699→      <div className="min-w-0">
+   700→        {isEmpty ? (
+   701→          <span className="text-muted-foreground italic text-xs">— Empty —</span>
+   702→        ) : (
+   703→          <div className="truncate font-medium">{lane.swimmerName}</div>
+   704→        )}
+   705→        {lane.laps.length > 0 && (
+   706→          <div className="text-[10px] text-muted-foreground">
+   707→            {lane.laps.length} lap{lane.laps.length > 1 ? "s" : ""}
+   708→            {lane.laps.length > 0 && (
+   709→              <> • Last: {formatMs(lane.laps[lane.laps.length - 1].lapMs)}</>
+   710→            )}
+   711→          </div>
+   712→        )}
+   713→      </div>
+   714→
+   715→      {/* Status badge */}
+   716→      <div>
+   717→        <span
+   718→          className={cn(
+   719→            "inline-block px-2 py-0.5 rounded text-[10px] font-semibold",
+   720→            STATUS_COLORS[lane.status]
+   721→          )}
+   722→        >
+   723→          {STATUS_LABEL[lane.status]}
+   724→        </span>
+   725→      </div>
+   726→
+   727→      {/* Live time */}
+   728→      <div className="lp-timer-digits text-lg font-bold tabular-nums text-navy">
+   729→        {lane.status === "RUNNING" || lane.status === "FINISHED"
+   730→          ? formatMs(elapsed)
+   731→          : "00:00.00"}
+   732→      </div>
+   733→
+   734→      {/* Controls */}
+   735→      <div className="flex items-center gap-1 justify-center">
+   736→        {lane.status === "RUNNING" ? (
+   737→          <Button
+   738→            size="sm"
+   739→            onClick={() => onStop(lane.laneNo)}
+   740→            className="bg-red-600 hover:bg-red-700 text-white h-9 px-3"
+   741→          >
+   742→            <Square className="size-3.5" /> STOP
+   743→          </Button>
+   744→        ) : (
+   745→          <Button
+   746→            size="sm"
+   747→            onClick={() => onStart(lane.laneNo)}
+   748→            disabled={isEmpty || lane.status === "FINISHED"}
+   749→            className="bg-green-600 hover:bg-green-700 text-white h-9 px-3"
+   750→          >
+   751→            <Play className="size-3.5" /> START
+   752→          </Button>
+   753→        )}
+   754→        <Button
+   755→          size="sm"
+   756→          variant="outline"
+   757→          onClick={() => onLap(lane.laneNo)}
+   758→          disabled={lane.status !== "RUNNING"}
+   759→          className="h-9 px-2"
+   760→          title="Record lap"
+   761→        >
+   762→          <Zap className="size-3.5" /> LAP
+   763→        </Button>
+   764→        <Button
+   765→          size="sm"
+   766→          variant="ghost"
+   767→          onClick={() => onReset(lane.laneNo)}
+   768→          disabled={lane.status === "IDLE" || isEmpty}
+   769→          className="h-9 px-2"
+   770→          title="Reset lane"
+   771→        >
+   772→          <RotateCcw className="size-3.5" />
+   773→        </Button>
+   774→      </div>
+   775→
+   776→      {/* Last lap (desktop) */}
+   777→      <div className="hidden md:block lp-timer-digits text-sm text-muted-foreground tabular-nums">
+   778→        {lane.lastLapMs !== null ? formatMs(lane.lastLapMs) : "—"}
+   779→      </div>
+   780→    </div>
+   781→  );
+   782→}
+   783→
+   784→// ============================================================
+   785→// FINISH CAPTURE VIEW — 12 large buttons (3x4 / 4x3)
+   786→// ============================================================
+   787→
+   788→function FinishCaptureView({
+   789→  lanes,
+   790→  tick,
+   791→  onFinish,
+   792→}: {
+   793→  lanes: LiveLaneState[];
+   794→  tick: number;
+   795→  onFinish: (n: number) => void;
+   796→}) {
+   797→  void tick;
+   798→  return (
+   799→    <Card>
+   800→      <CardHeader className="pb-2">
+   801→        <CardTitle className="text-sm flex items-center gap-2">
+   802→          <Flag className="size-4 text-red-600" /> Finish Capture Mode
+   803→          <Badge variant="secondary" className="ml-auto text-xs">
+   804→            Tap to stop running lanes instantly
+   805→          </Badge>
+   806→        </CardTitle>
+   807→      </CardHeader>
+   808→      <CardContent>
+   809→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+   810→          {lanes.map((lane) => {
+   811→            const isRunning = lane.status === "RUNNING";
+   812→            const elapsed = liveElapsedMs(lane);
+   813→            return (
+   814→              <button
+   815→                key={lane.laneNo}
+   816→                onClick={() => isRunning && onFinish(lane.laneNo)}
+   817→                disabled={!isRunning}
+   818→                className={cn(
+   819→                  "relative rounded-xl border-2 p-3 sm:p-4 text-left transition-all min-h-[110px] sm:min-h-[130px] flex flex-col justify-between",
+   820→                  isRunning
+   821→                    ? "bg-aqua text-white border-aqua shadow-lg lp-running-pulse hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+   822→                    : lane.status === "FINISHED"
+   823→                    ? "bg-green-50 border-green-300 text-green-800"
+   824→                    : "bg-muted/50 border-muted text-muted-foreground cursor-not-allowed"
+   825→                )}
+   826→              >
+   827→                <div className="flex items-center justify-between">
+   828→                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">
+   829→                    Finish L{lane.laneNo}
+   830→                  </span>
+   831→                  {lane.status === "FINISHED" && (
+   832→                    <CheckCircle2 className="size-5" />
+   833→                  )}
+   834→                </div>
+   835→                <div className="min-w-0">
+   836→                  <div className="text-sm font-semibold truncate">
+   837→                    {lane.swimmerName || "— Empty —"}
+   838→                  </div>
+   839→                  <div className="lp-timer-digits text-2xl sm:text-3xl font-extrabold tabular-nums mt-1">
+   840→                    {lane.status === "RUNNING" || lane.status === "FINISHED"
+   841→                      ? formatMs(elapsed)
+   842→                      : "00:00.00"}
+   843→                  </div>
+   844→                </div>
+   845→                {isRunning && (
+   846→                  <div className="text-[10px] uppercase tracking-wider opacity-80">
+   847→                    Tap to finish →
+   848→                  </div>
+   849→                )}
+   850→              </button>
+   851→            );
+   852→          })}
+   853→        </div>
+   854→      </CardContent>
+   855→    </Card>
+   856→  );
+   857→}
+   858→
+   859→// ============================================================
+   860→// LAP CAPTURE VIEW — 12 large buttons
+   861→// ============================================================
+   862→
+   863→function LapCaptureView({
+   864→  lanes,
+   865→  tick,
+   866→  onLap,
+   867→}: {
+   868→  lanes: LiveLaneState[];
+   869→  tick: number;
+   870→  onLap: (n: number) => void;
+   871→}) {
+   872→  void tick;
+   873→  return (
+   874→    <Card>
+   875→      <CardHeader className="pb-2">
+   876→        <CardTitle className="text-sm flex items-center gap-2">
+   877→          <Zap className="size-4 text-aqua" /> Lap Capture Mode
+   878→          <Badge variant="secondary" className="ml-auto text-xs">
+   879→            Records lap instantly for running lanes
+   880→          </Badge>
+   881→        </CardTitle>
+   882→      </CardHeader>
+   883→      <CardContent>
+   884→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+   885→          {lanes.map((lane) => {
+   886→            const isRunning = lane.status === "RUNNING";
+   887→            const elapsed = liveElapsedMs(lane);
+   888→            return (
+   889→              <button
+   890→                key={lane.laneNo}
+   891→                onClick={() => isRunning && onLap(lane.laneNo)}
+   892→                disabled={!isRunning}
+   893→                className={cn(
+   894→                  "relative rounded-xl border-2 p-3 sm:p-4 text-left transition-all min-h-[110px] sm:min-h-[130px] flex flex-col justify-between",
+   895→                  isRunning
+   896→                    ? "bg-navy text-white border-navy shadow-lg hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+   897→                    : "bg-muted/50 border-muted text-muted-foreground cursor-not-allowed"
+   898→                )}
+   899→              >
+   900→                <div className="flex items-center justify-between">
+   901→                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">
+   902→                    Lap L{lane.laneNo}
+   903→                  </span>
+   904→                  {lane.laps.length > 0 && (
+   905→                    <Badge className="bg-aqua text-white text-[10px]">
+   906→                      #{lane.laps.length}
+   907→                    </Badge>
+   908→                  )}
+   909→                </div>
+   910→                <div className="min-w-0">
+   911→                  <div className="text-sm font-semibold truncate">
+   912→                    {lane.swimmerName || "— Empty —"}
+   913→                  </div>
+   914→                  <div className="lp-timer-digits text-2xl sm:text-3xl font-extrabold tabular-nums mt-1">
+   915→                    {lane.status === "RUNNING" || lane.status === "FINISHED"
+   916→                      ? formatMs(elapsed)
+   917→                      : "00:00.00"}
+   918→                  </div>
+   919→                </div>
+   920→                <div className="text-[10px] uppercase tracking-wider opacity-80">
+   921→                  {isRunning
+   922→                    ? "Tap to record lap"
+   923→                    : lane.lastLapMs !== null
+   924→                    ? `Last: ${formatMs(lane.lastLapMs!)}`
+   925→                    : "Idle"}
+   926→                </div>
+   927→              </button>
+   928→            );
+   929→          })}
+   930→        </div>
+   931→      </CardContent>
+   932→    </Card>
+   933→  );
+   934→}
+   935→

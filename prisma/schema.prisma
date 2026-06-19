@@ -1,0 +1,226 @@
+// LanePulse Pro - Prisma schema
+// Smart Swim Timing, Training & Performance Intelligence
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USERS & AUTH
+// ============================================================
+
+model User {
+  id           String    @id @default(cuid())
+  fullName     String
+  email        String    @unique
+  username     String    @unique
+  passwordHash String
+  role         String    @default("VIEWER") // SUPER_ADMIN | COACH | VIEWER
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+
+  sessions       TrainingSession[]
+  auditLogs      AuditLog[]
+  performanceNotes PerformanceNote[]
+}
+
+// ============================================================
+// SWIMMERS
+// ============================================================
+
+model Swimmer {
+  id            String    @id @default(cuid())
+  swimmerName   String
+  age           Int?
+  gender        String?   // MALE | FEMALE | OTHER
+  dateOfBirth   DateTime?
+  activeStatus  Boolean   @default(true)
+  remarks       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  groupMembers  GroupMember[]
+  sessionLanes  SessionLane[]
+  sessionLaps   SessionLap[]
+  performanceNotes PerformanceNote[]
+}
+
+// ============================================================
+// SWIMMING STYLES
+// ============================================================
+
+model SwimmingStyle {
+  id        String  @id @default(cuid())
+  styleName String  @unique
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  sessions       TrainingSession[]
+  performanceNotes PerformanceNote[]
+}
+
+// ============================================================
+// TRAINING GROUPS / HEATS
+// ============================================================
+
+model TrainingGroup {
+  id         String    @id @default(cuid())
+  groupName  String
+  groupLevel String?
+  groupDate  DateTime?
+  remarks    String?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  members   GroupMember[]
+  sessions  TrainingSession[]
+}
+
+model GroupMember {
+  id         String   @id @default(cuid())
+  groupId    String
+  swimmerId  String
+  laneNo     Int      // 1 to 12
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  group     TrainingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  swimmer   Swimmer       @relation(fields: [swimmerId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, laneNo, isActive])
+  @@index([groupId])
+  @@index([swimmerId])
+}
+
+// ============================================================
+// TRAINING SESSIONS
+// ============================================================
+
+model TrainingSession {
+  id              String    @id @default(cuid())
+  sessionName     String
+  sessionDate     DateTime  @default(now())
+  sessionStartTime DateTime?
+  sessionEndTime  DateTime?
+  styleId         String
+  distanceMeters  Int
+  groupId         String?
+  status          String    @default("DRAFT") // DRAFT | RUNNING | COMPLETED | ABORTED
+  remarks         String?
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+
+  style    SwimmingStyle  @relation(fields: [styleId], references: [id])
+  group    TrainingGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  user     User           @relation(fields: [createdByUserId], references: [id])
+  lanes    SessionLane[]
+  laps     SessionLap[]
+  notes    PerformanceNote[]
+
+  @@index([groupId])
+  @@index([styleId])
+  @@index([sessionDate])
+}
+
+model SessionLane {
+  id              String    @id @default(cuid())
+  sessionId       String
+  laneNo          Int       // 1 to 12
+  swimmerId       String?
+  groupId         String?
+  startTime       DateTime?
+  stopTime        DateTime?
+  elapsedSeconds  Float?
+  resultText      String?
+  status          String    @default("IDLE") // IDLE | READY | RUNNING | FINISHED | DNF
+  createdAt       DateTime  @default(now())
+
+  session  TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  swimmer  Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+  laps     SessionLap[]
+
+  @@unique([sessionId, laneNo])
+  @@index([sessionId])
+}
+
+model SessionLap {
+  id              String    @id @default(cuid())
+  sessionId       String
+  sessionLaneId   String
+  laneNo          Int
+  swimmerId       String?
+  lapNo           Int
+  lapTimeSeconds  Float
+  lapTimeText     String
+  cumulativeSeconds Float
+  createdAt       DateTime  @default(now())
+
+  session   TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lane      SessionLane     @relation(fields: [sessionLaneId], references: [id], onDelete: Cascade)
+  swimmer   Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionLaneId, lapNo])
+  @@index([sessionId])
+  @@index([sessionLaneId])
+}
+
+// ============================================================
+// PERFORMANCE NOTES & RECOMMENDATIONS
+// ============================================================
+
+model PerformanceNote {
+  id                String   @id @default(cuid())
+  swimmerId         String?
+  sessionId         String?
+  styleId           String?
+  distanceMeters    Int?
+  recommendationText String
+  createdAt         DateTime @default(now())
+
+  swimmer  Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+  session  TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  style    SwimmingStyle?  @relation(fields: [styleId], references: [id], onDelete: SetNull)
+  user     User?           @relation(fields: [createdByUserId], references: [id])
+  createdByUserId String?
+
+  @@index([swimmerId])
+  @@index([sessionId])
+}
+
+// ============================================================
+// AUDIT LOGS
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  tableName  String
+  recordId   String?
+  details    String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([tableName])
+  @@index([createdAt])
+}
+
+// ============================================================
+// APP CONFIG (database connection metadata, setup state)
+// ============================================================
+
+model AppConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}

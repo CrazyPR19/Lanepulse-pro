@@ -1,0 +1,867 @@
+You are a senior full-stack software architect and developer.
+
+Build a completely new and improved swimming trainer application based on the logic of my existing LanePulse Trainer app.
+
+Existing app location for reference:
+D:\PYTHON CODE\LanePulse_Trainer
+
+New project location:
+D:\PYTHON CODE\LanePulse_Pro
+
+New application name:
+LanePulse Pro
+
+Tagline:
+Smart Swim Timing, Training & Performance Intelligence
+
+Important:
+This is a new requirement and should be built as a cleaner, improved version.
+Use the existing LanePulse Trainer app only as a reference for business logic and lessons learned.
+Do not damage or overwrite the existing LanePulse_Trainer folder.
+Create a new folder:
+D:\PYTHON CODE\LanePulse_Pro
+
+Main goal:
+Create a user-friendly swimming trainer system that can run as:
+
+1. Web application
+2. Mobile-friendly web application
+3. Later convertible into full mobile app
+
+The application must allow trainers to:
+
+* Manage swimmers
+* Create groups/heats based on 12 swimming pool lanes
+* Record session timing
+* Record lap timings
+* Quickly start next group/heat
+* Compare swimmer performance current vs previous
+* Compare swimmer vs other swimmers
+* Generate smart training recommendations
+* Use local PostgreSQL database
+* Allow other users to connect to their own PostgreSQL server through friendly setup/configuration
+* Use login and role-based authorization
+* Use clean sporty mobile-friendly UI
+
+Recommended technology:
+Backend:
+
+* Python 3.12+
+* FastAPI
+* SQLAlchemy ORM
+* PostgreSQL
+* Alembic for migrations
+* Pydantic
+* python-dotenv
+* passlib/bcrypt for password hashing
+* python-jose or PyJWT for JWT authentication
+
+Frontend:
+Option A preferred:
+
+* React + Vite + TypeScript
+* Tailwind CSS
+* Responsive mobile-first layout
+* PWA support for mobile-like use
+
+If React is too much for first build, create FastAPI backend plus Streamlit frontend only as fallback.
+But preferred design is:
+
+* FastAPI backend API
+* React responsive web/mobile frontend
+* PostgreSQL database
+
+Project structure:
+D:\PYTHON CODE\LanePulse_Pro
+│
+├── backend
+│   ├── app
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── security.py
+│   │   ├── models
+│   │   │   ├── **init**.py
+│   │   │   ├── user.py
+│   │   │   ├── swimmer.py
+│   │   │   ├── group.py
+│   │   │   ├── session.py
+│   │   │   ├── lap.py
+│   │   │   └── audit.py
+│   │   ├── schemas
+│   │   ├── services
+│   │   ├── routers
+│   │   └── utils
+│   ├── alembic
+│   ├── requirements.txt
+│   ├── .env.example
+│   └── README.md
+│
+├── frontend
+│   ├── package.json
+│   ├── index.html
+│   ├── src
+│   │   ├── main.tsx
+│   │   ├── App.tsx
+│   │   ├── api
+│   │   ├── components
+│   │   ├── pages
+│   │   ├── layouts
+│   │   ├── styles
+│   │   └── assets
+│   └── README.md
+│
+├── docs
+│   ├── SETUP.md
+│   ├── DATABASE_SETUP.md
+│   ├── USER_GUIDE.md
+│   └── MOBILE_STRATEGY.md
+│
+└── README.md
+
+Core lessons from existing LanePulse Trainer app:
+
+1. Group selection and group loading must be separate.
+
+   * selected_group_id
+   * loaded_group_id
+   * next_group_id
+     must never be mixed.
+2. Do not use group name as primary key. Always use group_id.
+3. Timer screen must default to fast poolside operation, not big scattered cards.
+4. Fast Timing Console must be the default screen.
+5. Finish Capture Mode and Lap Capture Mode are required because swimmers can finish close together.
+6. Text visibility is critical. No white text on white background.
+7. Buttons must be large and coach-friendly.
+8. Session distance must be stored separately.
+9. Free Style 100 mtr should be renamed to Free Style.
+10. Style and distance must both be used in analysis. Do not compare 50m with 100m.
+11. Swimmer history must be preserved even if swimmer is deactivated.
+12. Admin delete must be controlled and confirmation-based.
+
+Application modules required:
+
+1. Login and Authorization
+
+Create login system:
+
+* Username/email
+* Password
+* JWT token authentication
+* Password hashing
+* Role-based authorization
+
+Roles:
+
+* Super Admin
+* Coach / Trainer
+* Viewer
+
+Super Admin:
+
+* Full access
+* User creation
+* Database settings/configuration
+* Delete/deactivate controls
+* View all reports
+
+Coach / Trainer:
+
+* Manage swimmers
+* Create groups
+* Run sessions
+* View analysis
+* Cannot delete full database
+
+Viewer:
+
+* View reports only
+* Cannot create/edit/delete
+
+Default first-run behavior:
+
+* If no admin user exists, show self-authorization / setup page.
+* Create first Super Admin user.
+* User-friendly setup wizard:
+  Step 1: Database connection
+  Step 2: Create admin user
+  Step 3: Initialize default swimming styles
+  Step 4: Launch app
+
+Self authorization page:
+
+* Should be clean and beginner-friendly.
+* Show database connection status.
+* Allow user to test PostgreSQL connection.
+* Do not expose password in UI/logs.
+* Once first admin is created, setup page should not allow another unauthenticated admin creation.
+
+2. Database Connection Setup
+
+The app should connect to local PostgreSQL by default.
+
+Default .env:
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=lanepulse_pro
+DB_USER=postgres
+DB_PASSWORD=
+
+But user should be able to connect their own database:
+
+* Local PostgreSQL
+* Network PostgreSQL server
+* Different port
+* Different username/password
+
+Create database settings setup page:
+
+* Host
+* Port
+* Database name
+* User
+* Password
+* Test Connection button
+* Save Connection button
+
+Important:
+
+* Store connection settings in .env or secure local config file.
+* Do not print password.
+* Use SQLAlchemy URL.create to handle special characters in password like @, #, %, /, :
+* Avoid previous bug where password was merged into host.
+* Show safe diagnostic:
+  Host, Port, DB Name, User, Password: ********
+
+Database must be migration-safe:
+
+* Use Alembic migrations.
+* Existing tables should not break.
+* Add default data safely without duplication.
+
+3. Database Tables
+
+Required tables:
+
+users:
+
+* user_id
+* full_name
+* email
+* username
+* password_hash
+* role
+* is_active
+* created_at
+* last_login_at
+
+swimmers:
+
+* swimmer_id
+* swimmer_name
+* age
+* gender
+* date_of_birth nullable
+* active_status
+* remarks
+* created_at
+* updated_at
+
+swimming_styles:
+
+* style_id
+* style_name
+* is_active
+* sort_order
+
+Default styles:
+
+* Free Style
+* Back Stroke
+* Breast Stroke
+* Butterfly
+* Individual Medley
+* Freestyle Relay
+* Medley Relay
+* Kickboard Drill
+* Pull Buoy Drill
+* Sprint Training
+* Endurance Training
+
+training_groups:
+
+* group_id
+* group_name
+* group_level nullable
+* group_date nullable
+* remarks
+* is_active
+* created_at
+
+group_members:
+
+* group_member_id
+* group_id
+* swimmer_id
+* lane_no integer 1 to 12
+* is_active
+* created_at
+* updated_at
+
+training_sessions:
+
+* session_id
+* session_name
+* session_date
+* session_start_time
+* session_end_time
+* style_id
+* distance_meters
+* group_id
+* status
+* remarks
+* created_by_user_id
+* created_at
+
+session_lanes:
+
+* session_lane_id
+* session_id
+* lane_no
+* swimmer_id
+* group_id
+* start_time
+* stop_time
+* elapsed_seconds
+* result_text
+* status
+* created_at
+
+session_laps:
+
+* lap_id
+* session_id
+* session_lane_id
+* lane_no
+* swimmer_id
+* lap_no
+* lap_time_seconds
+* lap_time_text
+* cumulative_seconds
+* created_at
+
+performance_notes:
+
+* note_id
+* swimmer_id
+* session_id
+* style_id
+* distance_meters
+* recommendation_text
+* created_at
+
+audit_logs:
+
+* audit_id
+* user_id
+* action
+* table_name
+* record_id
+* details
+* created_at
+
+4. Swimmer Master
+
+Create mobile-friendly sporty page:
+
+* Add swimmer
+* Edit swimmer
+* Search swimmer
+* Deactivate swimmer
+* View swimmer profile
+* View swimmer history summary
+* Do not permanently delete by default
+
+Swimmer profile should show:
+
+* Best times by style/distance
+* Latest session
+* Improvement trend
+* Coach recommendations
+
+5. Group / Heat Builder
+
+Must support 12-lane pool.
+
+Features:
+
+* Create group/heat
+* Assign swimmers to lanes 1 to 12
+* Move swimmer quickly from one group to another
+* Replace swimmer in lane with confirmation
+* Remove swimmer from lane
+* View lane board
+
+Rules:
+
+* Same swimmer cannot be active twice in same group.
+* Same lane cannot have two active swimmers in same group.
+* Moving swimmers between groups must not change historical session data.
+* Group changes affect future sessions only.
+
+Quick transfer:
+
+* Select swimmer
+* Show current active group/lane
+* Select target group
+* Select target lane
+* Move Swimmer button
+* If target lane occupied, ask Replace confirmation.
+
+6. New Session Timer
+
+This is the most important screen.
+
+Default view:
+Fast Timing Console
+
+Do not make Card View default.
+Card View can exist as secondary option.
+
+Session setup:
+
+* Session Date
+* Swimming Style
+* Distance / Meters
+* Session Name
+* Select Group
+* Button: Load Selected Group
+
+Important state rules:
+
+* selected_group_id = group chosen in session setup
+* loaded_group_id = group currently loaded on timing board
+* next_group_id = group chosen for next heat/group
+* Do not auto-load group just because dropdown changed.
+* Only Load Selected Group should load group data.
+
+Status panel:
+Show clearly:
+
+* Selected Group
+* Currently Loaded Group
+* Style
+* Distance
+* Session Status
+
+Fast Timing Console:
+Show all 12 lanes in compact layout:
+Lane | Swimmer | Status | Live Time | START/STOP | LAP | Last Lap | RESET
+
+Requirements:
+
+* Large buttons
+* Minimal scrolling
+* Coach can operate quickly
+* Works on laptop/tablet/mobile browser
+* Running timers must not lose state
+* Use reliable frontend timer state
+* Save final values to backend only when session is completed
+
+Finish Capture Mode:
+
+* Show 12 large buttons:
+  FINISH L1 to FINISH L12
+* 3x4 or 4x3 layout
+* Stops running lane immediately
+* Designed for swimmers finishing close together
+* Must be very fast to click/tap
+
+Lap Capture Mode:
+
+* Show 12 large buttons:
+  LAP L1 to LAP L12
+* Records lap time immediately
+* Only active for running lanes
+* Show last lap instantly
+
+Bulk controls:
+
+* Start All Ready Lanes
+* Stop All Running Lanes
+* Reset Current Timers
+* Complete & Save Session
+
+Next Heat / Next Group Quick Start:
+
+* Select Next Group
+* Load Next Group
+* Start Next Group Immediately
+* Save Current, Then Load Next
+
+Rules:
+
+* If current session has unsaved timings, block loading next group unless user saves or confirms discard.
+* Saving current session then loading next group should create new session name automatically:
+  [Style] - [Distance]m - [Group Name] - yyyy-mm-dd HH:mm
+* Do not mix selected group with next group.
+
+7. Session History
+
+Features:
+
+* Search/filter by date range
+* Swimmer
+* Group
+* Style
+* Distance
+* Session status
+
+Show:
+
+* Session name
+* Date/time
+* Style
+* Distance
+* Group
+* Lane
+* Swimmer
+* Final time
+* Lap count
+* Status
+
+Allow:
+
+* View details
+* View laps
+* Export to Excel/CSV
+* Delete session only by Super Admin with typed confirmation
+
+8. Analysis Dashboard
+
+Create intelligent coaching reports.
+
+Important comparison rule:
+Compare only same:
+
+* Swimmer
+* Style
+* Distance
+
+Do not compare:
+
+* 50m Free Style with 100m Free Style
+* Back Stroke with Free Style
+
+Reports required:
+
+A. Swimmer Improvement Report
+For selected swimmer/style/distance:
+
+* Previous best time
+* Latest time
+* Difference in seconds
+* Improvement %
+* Status:
+  Improved / Slower / Same / Not enough data
+* Chart trend over time
+
+Formula:
+Lower time is better.
+Improvement Seconds = Previous Best Time - Latest Time.
+Improvement % = Improvement Seconds / Previous Best Time * 100.
+
+B. Current vs Previous Timing Report
+For each swimmer:
+
+* Last session time
+* Previous session time
+* Change seconds
+* Change %
+* Direction:
+  Improved / Slower / Same
+
+C. Swimmer vs Swimmer Comparison
+Allow coach to select:
+
+* Swimmer A
+* Swimmer B
+* Style
+* Distance
+* Date range
+
+Show:
+
+* Best time comparison
+* Average time comparison
+* Latest time comparison
+* Consistency comparison
+* Lap consistency comparison where lap data exists
+
+D. Group Ranking Report
+For selected session:
+
+* Rank swimmers by elapsed time
+* Show lane, swimmer, time, gap from first
+* Highlight best performer
+
+E. Lap Performance Report
+Use session_laps:
+
+* Lap 1, Lap 2, Lap 3...
+* Lap drop-off
+* Fastest lap
+* Slowest lap
+* Consistency score
+* Endurance drop detection
+
+F. Training Recommendation Engine
+
+Generate practical trainer recommendations based on results.
+
+Rules:
+
+* If swimmer improved:
+  Recommend continuing current training with slight progression.
+* If swimmer got slower:
+  Recommend checking fatigue, technique, starts, turns, breathing rhythm.
+* If lap times get slower each lap:
+  Recommend endurance and pacing sets.
+* If first lap is too fast and later laps drop sharply:
+  Recommend controlled start and strong finish drills.
+* If lap times are consistent:
+  Recommend sprint finish and power work.
+* If no enough data:
+  Recommend recording more sessions.
+
+Style-based recommendations:
+Free Style:
+
+* Streamline push-off drills
+* Kick endurance sets
+* Breathing rhythm practice
+* 25m sprint repeats
+* Catch and pull technique drills
+
+Back Stroke:
+
+* Body rotation drills
+* Back kick sets
+* Straight-arm recovery control
+* Wall push-off practice
+* Head position stability
+
+Butterfly:
+
+* Dolphin kick drills
+* Pull-kick timing
+* Short technique repeats
+* Core strength sets
+* Breathing timing practice
+
+Breast Stroke:
+
+* Kick timing drills
+* Glide control
+* Pull-breath-kick coordination
+* 25m technique repeats
+* Turnout kick efficiency
+
+Individual Medley:
+
+* Transition turns
+* Stroke balance
+* Weak stroke targeted sets
+* Pace management
+
+Relay:
+
+* Reaction and changeover practice
+* Sprint starts
+* Team order optimization
+
+Show recommendation in friendly coach language:
+
+* What happened
+* Why it may be happening
+* What to train next
+
+Avoid medical claims.
+Keep recommendations practical and safe.
+
+9. Admin Maintenance
+
+Role:
+Super Admin only.
+
+Features:
+
+* View table counts
+* Delete selected session
+* Deactivate swimmer
+* Permanent delete swimmer only if no historical records
+* Clear only session results
+* Clear groups only
+* Clear all training data except users/styles
+
+Safety:
+
+* Typed confirmation required:
+  DELETE SESSION
+  DELETE SWIMMER
+  CLEAR DATA
+* Historical data must not be accidentally deleted.
+* Audit log every admin action.
+
+10. Mobile-Friendly / PWA Requirements
+
+Frontend must be responsive:
+
+* Desktop
+* Tablet
+* Mobile
+
+Mobile design:
+
+* Bottom navigation for mobile
+* Large touch buttons
+* Fast Timing Console must work on tablet/mobile
+* Finish Capture buttons must fit mobile screen
+* Lap Capture buttons must fit mobile screen
+* No tiny buttons
+* No hidden scroll-heavy layout
+
+PWA:
+
+* Add manifest
+* App icon/logo
+* Installable from mobile browser if possible
+* Works on same Wi-Fi if backend runs on local laptop/server
+
+README should explain:
+
+* How to run web version
+* How to open from mobile on same Wi-Fi
+* How to deploy later
+* How to convert into native mobile later using Flutter/React Native if required
+
+11. Sporty UI Design
+
+Theme:
+
+* Sporty swim look
+* Blue, aqua, navy, white
+* Strong contrast
+* No invisible text
+* Large headers
+* Card-based layout
+* Stopwatch/wave logo
+* Motivational but professional labels
+
+App logo:
+Create SVG logo:
+
+* Wave symbol
+* Stopwatch symbol
+* Text: LanePulse Pro
+* Tagline: Smart Swim Timing
+
+UI must be extremely user-friendly:
+
+* Clear workflow
+* No confusion between selected group and loaded group
+* No hidden actions
+* No white text on white background
+* Important buttons should be obvious
+
+12. Setup and Run Instructions
+
+Create complete README with commands.
+
+Backend setup:
+cd "D:\PYTHON CODE\LanePulse_Pro\backend"
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+python -m app.main or uvicorn app.main:app --reload
+
+Frontend setup:
+cd "D:\PYTHON CODE\LanePulse_Pro\frontend"
+npm install
+npm run dev
+
+Database:
+
+* Explain how to create PostgreSQL database lanepulse_pro
+* Explain how to configure .env
+* Explain how to run migrations
+* Explain how to create first admin user through setup page
+
+13. Validation
+
+After building, run:
+
+Backend:
+cd "D:\PYTHON CODE\LanePulse_Pro\backend"
+.venv\Scripts\activate
+python -m compileall .
+uvicorn app.main:app --reload
+
+Frontend:
+cd "D:\PYTHON CODE\LanePulse_Pro\frontend"
+npm install
+npm run dev
+
+Test:
+
+* Open web app
+* Setup database
+* Create first admin
+* Login
+* Add swimmers
+* Create group
+* Assign swimmers to lanes
+* Start session
+* Record laps
+* Finish swimmers using Finish Capture Mode
+* Complete & save
+* View history
+* View analysis
+* Compare swimmer with previous timing
+* Compare swimmer with another swimmer
+* Test mobile browser layout
+
+14. Final Output Required
+
+After implementation, provide:
+
+1. Folder structure created.
+2. Technology used.
+3. Backend setup steps.
+4. Frontend setup steps.
+5. Database setup steps.
+6. Login/admin setup steps.
+7. How to run web version.
+8. How to access from mobile on same Wi-Fi.
+9. How timer logic works.
+10. How group loading is protected from wrong group issue.
+11. How lap/finish capture modes work.
+12. How analysis recommendations work.
+13. Known limitations.
+14. Next improvement roadmap.
+
+Important quality instruction:
+Do not create a toy demo.
+Build a usable first production-style version.
+Prioritize:
+
+1. Correct data model
+2. Reliable login/database connection
+3. Fast coach-friendly timing screen
+4. Clean mobile-friendly UI
+5. Smart swimmer analysis
+6. Safe admin controls
+
+Start implementation now in:
+D:\PYTHON CODE\LanePulse_Pro
