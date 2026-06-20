@@ -25,7 +25,8 @@ export type ViewKey =
   | "history"
   | "analysis"
   | "admin"
-  | "settings";
+  | "settings"
+  | "parent";
 
 interface AppState {
   view: ViewKey;
@@ -52,7 +53,18 @@ export const useAppStore = create<AppState>((set) => ({
 export function canAccess(view: ViewKey, role: Role | undefined | null): boolean {
   if (!role) return false;
   if (view === "admin" || view === "settings") return role === "SUPER_ADMIN";
+  if (view === "parent") return role === "PARENT";
+  if (view === "timer" || view === "swimmers" || view === "groups") {
+    return role === "SUPER_ADMIN" || role === "COACH";
+  }
   return true;
+}
+
+/** Default view for a role (used after login) */
+export function defaultViewForRole(role: Role | undefined | null): ViewKey {
+  if (role === "PARENT") return "parent";
+  if (role === "VIEWER") return "dashboard";
+  return "timer"; // COACH + SUPER_ADMIN default to Fast Timing Console
 }
 
 // ============================================================

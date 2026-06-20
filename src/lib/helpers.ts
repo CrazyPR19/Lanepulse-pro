@@ -86,5 +86,16 @@ export function canManageUsers(role?: string | null): boolean {
   return role === "SUPER_ADMIN";
 }
 export function canViewReports(role?: string | null): boolean {
-  return role === "SUPER_ADMIN" || role === "COACH" || role === "VIEWER";
+  return (
+    role === "SUPER_ADMIN" ||
+    role === "COACH" ||
+    role === "VIEWER" ||
+    role === "PARENT"
+  );
+}
+export function canManageParentAccess(role?: string | null): boolean {
+  return role === "SUPER_ADMIN" || role === "COACH";
+}
+export function isParent(role?: string | null): boolean {
+  return role === "PARENT";
 }

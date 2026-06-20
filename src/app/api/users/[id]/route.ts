@@ -11,7 +11,7 @@ import { hashPassword } from "@/lib/helpers";
 import type { Role } from "@/lib/types";
 import { NextRequest } from "next/server";
 
-const VALID_ROLES: Role[] = ["SUPER_ADMIN", "COACH", "VIEWER"];
+const VALID_ROLES: Role[] = ["SUPER_ADMIN", "COACH", "VIEWER", "PARENT"];
 
 export async function PATCH(
   req: NextRequest,

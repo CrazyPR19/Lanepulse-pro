@@ -1,0 +1,960 @@
+     1→"use client";
+     2→
+     3→// LanePulse Pro - Admin Maintenance (SUPER_ADMIN only)
+     4→
+     5→import { useState } from "react";
+     6→import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+     7→import {
+     8→  Activity,
+     9→  AlertTriangle,
+    10→  Ban,
+    11→  Database,
+    12→  History,
+    13→  Loader2,
+    14→  Plus,
+    15→  Shield,
+    16→  ShieldAlert,
+    17→  Trash2,
+    18→  UserCog,
+    19→  UserPlus,
+    20→} from "lucide-react";
+    21→
+    22→import { api } from "@/lib/api-client";
+    23→import { canManageUsers, canDeleteEverything } from "@/lib/helpers";
+    24→import { useAppStore } from "@/lib/store";
+    25→import { cn } from "@/lib/utils";
+    26→import type {
+    27→  AuditLogDTO,
+    28→  Role,
+    29→  TrainingSessionDTO,
+    30→  UserDTO,
+    31→} from "@/lib/types";
+    32→import { toast } from "sonner";
+    33→
+    34→import {
+    35→  AlertDialog,
+    36→  AlertDialogAction,
+    37→  AlertDialogCancel,
+    38→  AlertDialogContent,
+    39→  AlertDialogDescription,
+    40→  AlertDialogFooter,
+    41→  AlertDialogHeader,
+    42→  AlertDialogTitle,
+    43→} from "@/components/ui/alert-dialog";
+    44→import { Badge } from "@/components/ui/badge";
+    45→import { Button } from "@/components/ui/button";
+    46→import {
+    47→  Card,
+    48→  CardContent,
+    49→  CardDescription,
+    50→  CardHeader,
+    51→  CardTitle,
+    52→} from "@/components/ui/card";
+    53→import {
+    54→  Dialog,
+    55→  DialogContent,
+    56→  DialogDescription,
+    57→  DialogFooter,
+    58→  DialogHeader,
+    59→  DialogTitle,
+    60→} from "@/components/ui/dialog";
+    61→import { Input } from "@/components/ui/input";
+    62→import { Label } from "@/components/ui/label";
+    63→import { ScrollArea } from "@/components/ui/scroll-area";
+    64→import {
+    65→  Select,
+    66→  SelectContent,
+    67→  SelectItem,
+    68→  SelectTrigger,
+    69→  SelectValue,
+    70→} from "@/components/ui/select";
+    71→import { Skeleton } from "@/components/ui/skeleton";
+    72→import { Switch } from "@/components/ui/switch";
+    73→import {
+    74→  Table,
+    75→  TableBody,
+    76→  TableCell,
+    77→  TableHead,
+    78→  TableHeader,
+    79→  TableRow,
+    80→} from "@/components/ui/table";
+    81→
+    82→// ============================================================
+    83→// Role helpers
+    84→// ============================================================
+    85→function RoleBadge({ role }: { role: Role }) {
+    86→  const map: Record<Role, string> = {
+    87→    SUPER_ADMIN: "bg-aqua/15 text-aqua border-aqua/30",
+    88→    COACH: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300",
+    89→    VIEWER: "bg-muted text-muted-foreground border-border",
+    90→  };
+    91→  return (
+    92→    <Badge variant="outline" className={cn("border", map[role])}>
+    93→      {role.replace("_", " ")}
+    94→    </Badge>
+    95→  );
+    96→}
+    97→
+    98→// ============================================================
+    99→// Stats card
+   100→// ============================================================
+   101→function StatsCard() {
+   102→  const { data, isLoading } = useQuery<{ counts: Record<string, number> }>({
+   103→    queryKey: ["admin", "stats"],
+   104→    queryFn: () => api.get<{ counts: Record<string, number> }>("/api/admin/stats"),
+   105→  });
+   106→
+   107→  const counts = data?.counts;
+   108→  const items: { key: string; label: string }[] = [
+   109→    { key: "users", label: "Users" },
+   110→    { key: "swimmers", label: "Swimmers" },
+   111→    { key: "styles", label: "Styles" },
+   112→    { key: "groups", label: "Groups" },
+   113→    { key: "sessions", label: "Sessions" },
+   114→    { key: "sessionLanes", label: "Session Lanes" },
+   115→    { key: "sessionLaps", label: "Session Laps" },
+   116→    { key: "performanceNotes", label: "Performance Notes" },
+   117→    { key: "auditLogs", label: "Audit Logs" },
+   118→  ];
+   119→
+   120→  return (
+   121→    <Card className="bg-card">
+   122→      <CardHeader>
+   123→        <CardTitle className="flex items-center gap-2 text-base">
+   124→          <Database className="size-4 text-aqua" />
+   125→          Table Counts
+   126→        </CardTitle>
+   127→        <CardDescription>Row counts across the live database.</CardDescription>
+   128→      </CardHeader>
+   129→      <CardContent>
+   130→        {isLoading ? (
+   131→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+   132→            {Array.from({ length: 9 }).map((_, i) => (
+   133→              <Skeleton key={i} className="h-20" />
+   134→            ))}
+   135→          </div>
+   136→        ) : (
+   137→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+   138→            {items.map((it) => (
+   139→              <div
+   140→                key={it.key}
+   141→                className="rounded-lg border bg-card p-3 hover:border-aqua/40 transition-colors"
+   142→              >
+   143→                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+   144→                  {it.label}
+   145→                </div>
+   146→                <div className="text-2xl font-bold mt-1 lp-timer-digits">
+   147→                  {counts?.[it.key] ?? 0}
+   148→                </div>
+   149→              </div>
+   150→            ))}
+   151→          </div>
+   152→        )}
+   153→      </CardContent>
+   154→    </Card>
+   155→  );
+   156→}
+   157→
+   158→// ============================================================
+   159→// Audit log card
+   160→// ============================================================
+   161→function AuditCard() {
+   162→  const { data, isLoading } = useQuery<AuditLogDTO[]>({
+   163→    queryKey: ["admin", "audit", 50],
+   164→    queryFn: () => api.get<AuditLogDTO[]>("/api/admin/audit?limit=50"),
+   165→  });
+   166→
+   167→  return (
+   168→    <Card className="bg-card">
+   169→      <CardHeader>
+   170→        <CardTitle className="flex items-center gap-2 text-base">
+   171→          <History className="size-4 text-aqua" />
+   172→          Recent Audit Log
+   173→        </CardTitle>
+   174→        <CardDescription>Last 50 administrative actions.</CardDescription>
+   175→      </CardHeader>
+   176→      <CardContent>
+   177→        {isLoading ? (
+   178→          <Skeleton className="h-72 w-full" />
+   179→        ) : (data ?? []).length === 0 ? (
+   180→          <div className="text-sm text-muted-foreground text-center py-10">
+   181→            No audit log entries yet.
+   182→          </div>
+   183→        ) : (
+   184→          <ScrollArea className="h-96 rounded-md border">
+   185→            <Table>
+   186→              <TableHeader className="sticky top-0 bg-card z-10">
+   187→                <TableRow>
+   188→                  <TableHead>Time</TableHead>
+   189→                  <TableHead>User</TableHead>
+   190→                  <TableHead>Action</TableHead>
+   191→                  <TableHead>Table</TableHead>
+   192→                  <TableHead>Record</TableHead>
+   193→                  <TableHead>Details</TableHead>
+   194→                </TableRow>
+   195→              </TableHeader>
+   196→              <TableBody>
+   197→                {(data ?? []).map((log) => (
+   198→                  <TableRow key={log.id}>
+   199→                    <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap">
+   200→                      {new Date(log.createdAt).toLocaleString(undefined, {
+   201→                        month: "short",
+   202→                        day: "numeric",
+   203→                        hour: "2-digit",
+   204→                        minute: "2-digit",
+   205→                      })}
+   206→                    </TableCell>
+   207→                    <TableCell className="text-xs">
+   208→                      {log.userName ?? "—"}
+   209→                    </TableCell>
+   210→                    <TableCell>
+   211→                      <Badge variant="outline" className="bg-aqua/10 text-aqua border-aqua/30 text-[10px]">
+   212→                        {log.action}
+   213→                      </Badge>
+   214→                    </TableCell>
+   215→                    <TableCell className="text-xs">{log.tableName}</TableCell>
+   216→                    <TableCell className="text-[11px] text-muted-foreground font-mono">
+   217→                      {log.recordId ? log.recordId.slice(0, 8) : "—"}
+   218→                    </TableCell>
+   219→                    <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
+   220→                      {log.details ?? ""}
+   221→                    </TableCell>
+   222→                  </TableRow>
+   223→                ))}
+   224→              </TableBody>
+   225→            </Table>
+   226→          </ScrollArea>
+   227→        )}
+   228→      </CardContent>
+   229→    </Card>
+   230→  );
+   231→}
+   232→
+   233→// ============================================================
+   234→// Danger Zone
+   235→// ============================================================
+   236→function DangerRow({
+   237→  title,
+   238→  description,
+   239→  confirmText,
+   240→  open,
+   241→  onOpenChange,
+   242→  value,
+   243→  onValueChange,
+   244→  onConfirm,
+   245→  isPending,
+   246→  extra,
+   247→  icon: Icon = Trash2,
+   248→}: {
+   249→  title: string;
+   250→  description: string;
+   251→  confirmText: string;
+   252→  open: boolean;
+   253→  onOpenChange: (b: boolean) => void;
+   254→  value: string;
+   255→  onValueChange: (s: string) => void;
+   256→  onConfirm: () => void;
+   257→  isPending: boolean;
+   258→  extra?: React.ReactNode;
+   259→  icon?: React.ComponentType<{ className?: string }>;
+   260→}) {
+   261→  return (
+   262→    <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4">
+   263→      <div className="flex items-start gap-3">
+   264→        <div className="rounded-md bg-red-500/15 p-2 shrink-0">
+   265→          <Icon className="size-4 text-red-600 dark:text-red-400" />
+   266→        </div>
+   267→        <div className="flex-1 min-w-0">
+   268→          <div className="font-semibold text-sm">{title}</div>
+   269→          <div className="text-xs text-muted-foreground mt-0.5">
+   270→            {description}
+   271→          </div>
+   272→          <Button
+   273→            variant="destructive"
+   274→            size="sm"
+   275→            className="mt-3"
+   276→            onClick={() => onOpenChange(true)}
+   277→          >
+   278→            <AlertTriangle className="size-3.5" />
+   279→            Open
+   280→          </Button>
+   281→        </div>
+   282→      </div>
+   283→      <AlertDialog open={open} onOpenChange={onOpenChange}>
+   284→        <AlertDialogContent>
+   285→          <AlertDialogHeader>
+   286→            <AlertDialogTitle>{title}</AlertDialogTitle>
+   287→            <AlertDialogDescription>
+   288→              {description}
+   289→              <br />
+   290→              Type <span className="font-mono font-bold text-red-600 dark:text-red-400">{confirmText}</span> to confirm.
+   291→            </AlertDialogDescription>
+   292→          </AlertDialogHeader>
+   293→          {extra}
+   294→          <div className="space-y-1.5">
+   295→            <Label className="text-xs">Confirmation</Label>
+   296→            <Input
+   297→              value={value}
+   298→              onChange={(e) => onValueChange(e.target.value)}
+   299→              placeholder={confirmText}
+   300→            />
+   301→          </div>
+   302→          <AlertDialogFooter>
+   303→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   304→            <AlertDialogAction
+   305→              className="bg-destructive text-white hover:bg-destructive/90"
+   306→              disabled={value !== confirmText || isPending}
+   307→              onClick={(e) => {
+   308→                e.preventDefault();
+   309→                onConfirm();
+   310→              }}
+   311→            >
+   312→              {isPending ? (
+   313→                <Loader2 className="size-4 animate-spin" />
+   314→              ) : (
+   315→                <Trash2 className="size-4" />
+   316→              )}
+   317→              Confirm
+   318→            </AlertDialogAction>
+   319→          </AlertDialogFooter>
+   320→        </AlertDialogContent>
+   321→      </AlertDialog>
+   322→    </div>
+   323→  );
+   324→}
+   325→
+   326→function DangerZoneCard() {
+   327→  const qc = useQueryClient();
+   328→  const [sessionOpen, setSessionOpen] = useState(false);
+   329→  const [clearSessionsOpen, setClearSessionsOpen] = useState(false);
+   330→  const [clearGroupsOpen, setClearGroupsOpen] = useState(false);
+   331→  const [clearTrainingOpen, setClearTrainingOpen] = useState(false);
+   332→
+   333→  // Session picker for "delete selected session"
+   334→  const sessionsQ = useQuery<TrainingSessionDTO[]>({
+   335→    queryKey: ["sessions", "all"],
+   336→    queryFn: () => api.get<TrainingSessionDTO[]>("/api/sessions"),
+   337→    enabled: sessionOpen,
+   338→  });
+   339→
+   340→  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+   341→  const [sessionConfirm, setSessionConfirm] = useState("");
+   342→  const [clearSessionsConfirm, setClearSessionsConfirm] = useState("");
+   343→  const [clearGroupsConfirm, setClearGroupsConfirm] = useState("");
+   344→  const [clearTrainingConfirm, setClearTrainingConfirm] = useState("");
+   345→
+   346→  const deleteSessionMu = useMutation({
+   347→    mutationFn: (id: string) =>
+   348→      api.del(`/api/sessions/${id}`, { confirm: "DELETE SESSION" }),
+   349→    onSuccess: () => {
+   350→      toast.success("Session deleted.");
+   351→      qc.invalidateQueries({ queryKey: ["sessions"] });
+   352→      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
+   353→      qc.invalidateQueries({ queryKey: ["admin", "audit"] });
+   354→      setSessionOpen(false);
+   355→      setSelectedSessionId("");
+   356→      setSessionConfirm("");
+   357→    },
+   358→    onError: (e: Error) => toast.error(e.message),
+   359→  });
+   360→
+   361→  const clearSessionsMu = useMutation({
+   362→    mutationFn: () =>
+   363→      api.post("/api/admin/clear-sessions", { confirm: "CLEAR DATA" }),
+   364→    onSuccess: (r: any) => {
+   365→      toast.success(
+   366→        `Cleared ${r.deleted?.sessions ?? 0} session(s), ${r.deleted?.sessionLanes ?? 0} lane(s), ${r.deleted?.sessionLaps ?? 0} lap(s).`
+   367→      );
+   368→      qc.invalidateQueries({ queryKey: ["sessions"] });
+   369→      qc.invalidateQueries({ queryKey: ["admin"] });
+   370→      setClearSessionsOpen(false);
+   371→      setClearSessionsConfirm("");
+   372→    },
+   373→    onError: (e: Error) => toast.error(e.message),
+   374→  });
+   375→
+   376→  const clearGroupsMu = useMutation({
+   377→    mutationFn: () =>
+   378→      api.post("/api/admin/clear-groups", { confirm: "CLEAR GROUPS" }),
+   379→    onSuccess: () => {
+   380→      toast.success("All groups cleared.");
+   381→      qc.invalidateQueries({ queryKey: ["groups"] });
+   382→      qc.invalidateQueries({ queryKey: ["admin"] });
+   383→      setClearGroupsOpen(false);
+   384→      setClearGroupsConfirm("");
+   385→    },
+   386→    onError: (e: Error) => toast.error(e.message),
+   387→  });
+   388→
+   389→  const clearTrainingMu = useMutation({
+   390→    mutationFn: () =>
+   391→      api.post("/api/admin/clear-training-data", { confirm: "CLEAR DATA" }),
+   392→    onSuccess: () => {
+   393→      toast.success("All training data cleared (users + styles kept).");
+   394→      qc.invalidateQueries();
+   395→      setClearTrainingOpen(false);
+   396→      setClearTrainingConfirm("");
+   397→    },
+   398→    onError: (e: Error) => toast.error(e.message),
+   399→  });
+   400→
+   401→  return (
+   402→    <Card className="border-red-500/30">
+   403→      <CardHeader>
+   404→        <CardTitle className="flex items-center gap-2 text-base text-red-600 dark:text-red-400">
+   405→          <ShieldAlert className="size-4" />
+   406→          Danger Zone
+   407→        </CardTitle>
+   408→        <CardDescription>
+   409→          Destructive operations. Each action requires typed confirmation.
+   410→        </CardDescription>
+   411→      </CardHeader>
+   412→      <CardContent className="space-y-3">
+   413→        <DangerRow
+   414→          title="Delete Selected Session"
+   415→          description="Permanently delete a single training session and its lanes/laps."
+   416→          confirmText="DELETE SESSION"
+   417→          open={sessionOpen}
+   418→          onOpenChange={(b) => {
+   419→            setSessionOpen(b);
+   420→            if (b) {
+   421→              setSessionConfirm("");
+   422→              setSelectedSessionId("");
+   423→            }
+   424→          }}
+   425→          value={sessionConfirm}
+   426→          onValueChange={setSessionConfirm}
+   427→          onConfirm={() => {
+   428→            if (!selectedSessionId) {
+   429→              toast.error("Pick a session first.");
+   430→              return;
+   431→            }
+   432→            deleteSessionMu.mutate(selectedSessionId);
+   433→          }}
+   434→          isPending={deleteSessionMu.isPending}
+   435→          extra={
+   436→            <div className="space-y-1.5">
+   437→              <Label className="text-xs">Session</Label>
+   438→              <Select
+   439→                value={selectedSessionId}
+   440→                onValueChange={setSelectedSessionId}
+   441→              >
+   442→                <SelectTrigger className="w-full">
+   443→                  <SelectValue placeholder="Select session" />
+   444→                </SelectTrigger>
+   445→                <SelectContent>
+   446→                  {(sessionsQ.data ?? []).map((s) => (
+   447→                    <SelectItem key={s.id} value={s.id}>
+   448→                      {s.sessionName} ({s.status})
+   449→                    </SelectItem>
+   450→                  ))}
+   451→                </SelectContent>
+   452→              </Select>
+   453→            </div>
+   454→          }
+   455→        />
+   456→
+   457→        <DangerRow
+   458→          title="Clear All Session Results"
+   459→          description="Delete every training session and all associated lanes/laps. Swimmers, groups, users and styles remain."
+   460→          confirmText="CLEAR DATA"
+   461→          open={clearSessionsOpen}
+   462→          onOpenChange={(b) => {
+   463→            setClearSessionsOpen(b);
+   464→            if (b) setClearSessionsConfirm("");
+   465→          }}
+   466→          value={clearSessionsConfirm}
+   467→          onValueChange={setClearSessionsConfirm}
+   468→          onConfirm={() => clearSessionsMu.mutate()}
+   469→          isPending={clearSessionsMu.isPending}
+   470→        />
+   471→
+   472→        <DangerRow
+   473→          title="Clear All Groups"
+   474→          description="Remove all training groups and group member assignments. Hard-deletes groups with no sessions; soft-deletes others."
+   475→          confirmText="CLEAR GROUPS"
+   476→          open={clearGroupsOpen}
+   477→          onOpenChange={(b) => {
+   478→            setClearGroupsOpen(b);
+   479→            if (b) setClearGroupsConfirm("");
+   480→          }}
+   481→          value={clearGroupsConfirm}
+   482→          onValueChange={setClearGroupsConfirm}
+   483→          onConfirm={() => clearGroupsMu.mutate()}
+   484→          isPending={clearGroupsMu.isPending}
+   485→        />
+   486→
+   487→        <DangerRow
+   488→          title="Clear All Training Data"
+   489→          description="Delete everything except users and swimming styles (laps, lanes, sessions, groups, swimmers, performance notes)."
+   490→          confirmText="CLEAR DATA"
+   491→          open={clearTrainingOpen}
+   492→          onOpenChange={(b) => {
+   493→            setClearTrainingOpen(b);
+   494→            if (b) setClearTrainingConfirm("");
+   495→          }}
+   496→          value={clearTrainingConfirm}
+   497→          onValueChange={setClearTrainingConfirm}
+   498→          onConfirm={() => clearTrainingMu.mutate()}
+   499→          isPending={clearTrainingMu.isPending}
+   500→        />
+   501→      </CardContent>
+   502→    </Card>
+   503→  );
+   504→}
+   505→
+   506→// ============================================================
+   507→// User Management
+   508→// ============================================================
+   509→interface UserFormState {
+   510→  fullName: string;
+   511→  email: string;
+   512→  username: string;
+   513→  password: string;
+   514→  role: Role;
+   515→  isActive: boolean;
+   516→}
+   517→
+   518→function emptyUserForm(): UserFormState {
+   519→  return {
+   520→    fullName: "",
+   521→    email: "",
+   522→    username: "",
+   523→    password: "",
+   524→    role: "VIEWER",
+   525→    isActive: true,
+   526→  };
+   527→}
+   528→
+   529→function UserManagementCard() {
+   530→  const qc = useQueryClient();
+   531→  const user = useAppStore((s) => s.user);
+   532→  const [dialogOpen, setDialogOpen] = useState(false);
+   533→  const [editing, setEditing] = useState<UserDTO | null>(null);
+   534→  const [form, setForm] = useState<UserFormState>(emptyUserForm());
+   535→  const [deleteTarget, setDeleteTarget] = useState<UserDTO | null>(null);
+   536→  const [deleteConfirm, setDeleteConfirm] = useState("");
+   537→
+   538→  const usersQ = useQuery<UserDTO[]>({
+   539→    queryKey: ["users"],
+   540→    queryFn: () => api.get<UserDTO[]>("/api/users"),
+   541→  });
+   542→
+   543→  const createMu = useMutation({
+   544→    mutationFn: (body: UserFormState) =>
+   545→      api.post<UserDTO>("/api/users", body),
+   546→    onSuccess: () => {
+   547→      toast.success("User created.");
+   548→      qc.invalidateQueries({ queryKey: ["users"] });
+   549→      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
+   550→      qc.invalidateQueries({ queryKey: ["admin", "audit"] });
+   551→      setDialogOpen(false);
+   552→    },
+   553→    onError: (e: Error) => toast.error(e.message),
+   554→  });
+   555→
+   556→  const patchMu = useMutation({
+   557→    mutationFn: ({ id, body }: { id: string; body: Partial<UserFormState> }) =>
+   558→      api.patch<UserDTO>(`/api/users/${id}`, body),
+   559→    onSuccess: () => {
+   560→      toast.success("User updated.");
+   561→      qc.invalidateQueries({ queryKey: ["users"] });
+   562→      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
+   563→      qc.invalidateQueries({ queryKey: ["admin", "audit"] });
+   564→      setDialogOpen(false);
+   565→    },
+   566→    onError: (e: Error) => toast.error(e.message),
+   567→  });
+   568→
+   569→  const deleteMu = useMutation({
+   570→    mutationFn: ({ id, hard }: { id: string; hard: boolean }) =>
+   571→      api.del(`/api/users/${id}`, hard ? { confirm: "DELETE USER" } : undefined),
+   572→    onSuccess: (_data, vars) => {
+   573→      toast.success(
+   574→        vars.hard ? "User permanently deleted." : "User deactivated."
+   575→      );
+   576→      qc.invalidateQueries({ queryKey: ["users"] });
+   577→      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
+   578→      qc.invalidateQueries({ queryKey: ["admin", "audit"] });
+   579→      setDeleteTarget(null);
+   580→      setDeleteConfirm("");
+   581→    },
+   582→    onError: (e: Error) => toast.error(e.message),
+   583→  });
+   584→
+   585→  function openCreate() {
+   586→    setEditing(null);
+   587→    setForm(emptyUserForm());
+   588→    setDialogOpen(true);
+   589→  }
+   590→
+   591→  function openEdit(u: UserDTO) {
+   592→    setEditing(u);
+   593→    setForm({
+   594→      fullName: u.fullName,
+   595→      email: u.email,
+   596→      username: u.username,
+   597→      password: "",
+   598→      role: u.role,
+   599→      isActive: u.isActive,
+   600→    });
+   601→    setDialogOpen(true);
+   602→  }
+   603→
+   604→  function submit() {
+   605→    if (editing) {
+   606→      const patch: Partial<UserFormState> = {
+   607→        fullName: form.fullName,
+   608→        email: form.email,
+   609→        username: form.username,
+   610→        role: form.role,
+   611→        isActive: form.isActive,
+   612→      };
+   613→      if (form.password) patch.password = form.password;
+   614→      patchMu.mutate({ id: editing.id, body: patch });
+   615→    } else {
+   616→      if (!form.password) {
+   617→        toast.error("Password is required for new users.");
+   618→        return;
+   619→      }
+   620→      createMu.mutate(form);
+   621→    }
+   622→  }
+   623→
+   624→  return (
+   625→    <Card className="bg-card">
+   626→      <CardHeader>
+   627→        <div className="flex items-start justify-between gap-2 flex-wrap">
+   628→          <div>
+   629→            <CardTitle className="flex items-center gap-2 text-base">
+   630→              <UserCog className="size-4 text-aqua" />
+   631→              User Management
+   632→            </CardTitle>
+   633→            <CardDescription>
+   634→              Create, edit and deactivate user accounts.
+   635→            </CardDescription>
+   636→          </div>
+   637→          <Button
+   638→            className="bg-aqua text-white hover:bg-aqua/90"
+   639→            onClick={openCreate}
+   640→          >
+   641→            <UserPlus className="size-4" /> Add User
+   642→          </Button>
+   643→        </div>
+   644→      </CardHeader>
+   645→      <CardContent>
+   646→        {usersQ.isLoading ? (
+   647→          <Skeleton className="h-64 w-full" />
+   648→        ) : (usersQ.data ?? []).length === 0 ? (
+   649→          <div className="text-sm text-muted-foreground text-center py-10">
+   650→            No users found.
+   651→          </div>
+   652→        ) : (
+   653→          <div className="max-h-[28rem] overflow-y-auto lp-scroll rounded-md border">
+   654→            <Table>
+   655→              <TableHeader className="sticky top-0 bg-card z-10">
+   656→                <TableRow>
+   657→                  <TableHead>Name</TableHead>
+   658→                  <TableHead>Username</TableHead>
+   659→                  <TableHead>Email</TableHead>
+   660→                  <TableHead>Role</TableHead>
+   661→                  <TableHead>Active</TableHead>
+   662→                  <TableHead>Last Login</TableHead>
+   663→                  <TableHead className="text-right">Actions</TableHead>
+   664→                </TableRow>
+   665→              </TableHeader>
+   666→              <TableBody>
+   667→                {(usersQ.data ?? []).map((u) => {
+   668→                  const isSelf = user?.id === u.id;
+   669→                  return (
+   670→                    <TableRow key={u.id}>
+   671→                      <TableCell className="font-medium">
+   672→                        {u.fullName}
+   673→                        {isSelf && (
+   674→                          <Badge variant="outline" className="ml-2 text-[10px] bg-aqua/10 text-aqua border-aqua/30">
+   675→                            you
+   676→                          </Badge>
+   677→                        )}
+   678→                      </TableCell>
+   679→                      <TableCell className="text-xs font-mono">{u.username}</TableCell>
+   680→                      <TableCell className="text-xs">{u.email}</TableCell>
+   681→                      <TableCell>
+   682→                        <RoleBadge role={u.role} />
+   683→                      </TableCell>
+   684→                      <TableCell>
+   685→                        {u.isActive ? (
+   686→                          <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300">
+   687→                            Active
+   688→                          </Badge>
+   689→                        ) : (
+   690→                          <Badge variant="outline" className="bg-muted text-muted-foreground">
+   691→                            Inactive
+   692→                          </Badge>
+   693→                        )}
+   694→                      </TableCell>
+   695→                      <TableCell className="text-[11px] text-muted-foreground">
+   696→                        {u.lastLoginAt
+   697→                          ? new Date(u.lastLoginAt).toLocaleString(undefined, {
+   698→                              month: "short",
+   699→                              day: "numeric",
+   700→                              hour: "2-digit",
+   701→                              minute: "2-digit",
+   702→                            })
+   703→                          : "—"}
+   704→                      </TableCell>
+   705→                      <TableCell className="text-right">
+   706→                        <div className="inline-flex gap-1">
+   707→                          <Button
+   708→                            variant="ghost"
+   709→                            size="sm"
+   710→                            onClick={() => openEdit(u)}
+   711→                          >
+   712→                            <UserCog className="size-3.5" /> Edit
+   713→                          </Button>
+   714→                          <Button
+   715→                            variant="ghost"
+   716→                            size="sm"
+   717→                            className="text-red-600 hover:text-red-700 hover:bg-red-500/10"
+   718→                            onClick={() => {
+   719→                              if (isSelf) {
+   720→                                toast.error("Cannot delete your own account.");
+   721→                                return;
+   722→                              }
+   723→                              setDeleteTarget(u);
+   724→                              setDeleteConfirm("");
+   725→                            }}
+   726→                          >
+   727→                            <Ban className="size-3.5" /> Deactivate
+   728→                          </Button>
+   729→                        </div>
+   730→                      </TableCell>
+   731→                    </TableRow>
+   732→                  );
+   733→                })}
+   734→              </TableBody>
+   735→            </Table>
+   736→          </div>
+   737→        )}
+   738→      </CardContent>
+   739→
+   740→      {/* Create / Edit dialog */}
+   741→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   742→        <DialogContent>
+   743→          <DialogHeader>
+   744→            <DialogTitle>
+   745→              {editing ? `Edit ${editing.fullName}` : "Add User"}
+   746→            </DialogTitle>
+   747→            <DialogDescription>
+   748→              {editing
+   749→                ? "Leave password blank to keep the current password."
+   750→                : "Create a new user account with a role."}
+   751→            </DialogDescription>
+   752→          </DialogHeader>
+   753→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   754→            <div className="space-y-1.5">
+   755→              <Label className="text-xs">Full Name</Label>
+   756→              <Input
+   757→                value={form.fullName}
+   758→                onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+   759→              />
+   760→            </div>
+   761→            <div className="space-y-1.5">
+   762→              <Label className="text-xs">Username</Label>
+   763→              <Input
+   764→                value={form.username}
+   765→                onChange={(e) => setForm({ ...form, username: e.target.value })}
+   766→              />
+   767→            </div>
+   768→            <div className="space-y-1.5">
+   769→              <Label className="text-xs">Email</Label>
+   770→              <Input
+   771→                type="email"
+   772→                value={form.email}
+   773→                onChange={(e) => setForm({ ...form, email: e.target.value })}
+   774→              />
+   775→            </div>
+   776→            <div className="space-y-1.5">
+   777→              <Label className="text-xs">
+   778→                Password {editing && "(leave blank to keep)"}
+   779→              </Label>
+   780→              <Input
+   781→                type="password"
+   782→                value={form.password}
+   783→                onChange={(e) => setForm({ ...form, password: e.target.value })}
+   784→                placeholder={editing ? "••••••" : ""}
+   785→              />
+   786→            </div>
+   787→            <div className="space-y-1.5">
+   788→              <Label className="text-xs">Role</Label>
+   789→              <Select
+   790→                value={form.role}
+   791→                onValueChange={(v) => setForm({ ...form, role: v as Role })}
+   792→              >
+   793→                <SelectTrigger className="w-full">
+   794→                  <SelectValue />
+   795→                </SelectTrigger>
+   796→                <SelectContent>
+   797→                  <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+   798→                  <SelectItem value="COACH">Coach</SelectItem>
+   799→                  <SelectItem value="VIEWER">Viewer</SelectItem>
+   800→                </SelectContent>
+   801→              </Select>
+   802→            </div>
+   803→            <div className="flex items-center justify-between rounded-md border px-3 py-2">
+   804→              <Label className="text-xs">Active</Label>
+   805→              <Switch
+   806→                checked={form.isActive}
+   807→                onCheckedChange={(b) => setForm({ ...form, isActive: b })}
+   808→              />
+   809→            </div>
+   810→          </div>
+   811→          <DialogFooter>
+   812→            <Button
+   813→              variant="outline"
+   814→              onClick={() => setDialogOpen(false)}
+   815→              disabled={createMu.isPending || patchMu.isPending}
+   816→            >
+   817→              Cancel
+   818→            </Button>
+   819→            <Button
+   820→              className="bg-aqua text-white hover:bg-aqua/90"
+   821→              onClick={submit}
+   822→              disabled={createMu.isPending || patchMu.isPending}
+   823→            >
+   824→              {createMu.isPending || patchMu.isPending ? (
+   825→                <Loader2 className="size-4 animate-spin" />
+   826→              ) : (
+   827→                <Plus className="size-4" />
+   828→              )}
+   829→              {editing ? "Save Changes" : "Create User"}
+   830→            </Button>
+   831→          </DialogFooter>
+   832→        </DialogContent>
+   833→      </Dialog>
+   834→
+   835→      {/* Delete / Deactivate dialog */}
+   836→      <AlertDialog
+   837→        open={!!deleteTarget}
+   838→        onOpenChange={(b) => {
+   839→          if (!b) {
+   840→            setDeleteTarget(null);
+   841→            setDeleteConfirm("");
+   842→          }
+   843→        }}
+   844→      >
+   845→        <AlertDialogContent>
+   846→          <AlertDialogHeader>
+   847→            <AlertDialogTitle>
+   848→              Remove user "{deleteTarget?.fullName}"?
+   849→            </AlertDialogTitle>
+   850→            <AlertDialogDescription>
+   851→              By default the user will be deactivated (soft-delete). To permanently
+   852→              delete, type <span className="font-mono font-bold text-red-600 dark:text-red-400">DELETE USER</span>.
+   853→              Permanent delete only works if the user has no audit logs and has not created any sessions.
+   854→              {user?.id === deleteTarget?.id && (
+   855→                <span className="block mt-2 text-red-600 dark:text-red-400 font-medium">
+   856→                  You cannot delete your own account.
+   857→                </span>
+   858→              )}
+   859→            </AlertDialogDescription>
+   860→          </AlertDialogHeader>
+   861→          <div className="space-y-1.5">
+   862→            <Label className="text-xs">
+   863→              Type DELETE USER to permanently delete (or leave blank to deactivate)
+   864→            </Label>
+   865→            <Input
+   866→              value={deleteConfirm}
+   867→              onChange={(e) => setDeleteConfirm(e.target.value)}
+   868→              placeholder="DELETE USER"
+   869→            />
+   870→          </div>
+   871→          <AlertDialogFooter>
+   872→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   873→            <AlertDialogAction
+   874→              className="bg-destructive text-white hover:bg-destructive/90"
+   875→              disabled={
+   876→                deleteMu.isPending ||
+   877→                user?.id === deleteTarget?.id
+   878→              }
+   879→              onClick={(e) => {
+   880→                e.preventDefault();
+   881→                if (!deleteTarget) return;
+   882→                deleteMu.mutate({
+   883→                  id: deleteTarget.id,
+   884→                  hard: deleteConfirm === "DELETE USER",
+   885→                });
+   886→              }}
+   887→            >
+   888→              {deleteMu.isPending ? (
+   889→                <Loader2 className="size-4 animate-spin" />
+   890→              ) : (
+   891→                <Ban className="size-4" />
+   892→              )}
+   893→              {deleteConfirm === "DELETE USER"
+   894→                ? "Permanently Delete"
+   895→                : "Deactivate"}
+   896→            </AlertDialogAction>
+   897→          </AlertDialogFooter>
+   898→        </AlertDialogContent>
+   899→      </AlertDialog>
+   900→    </Card>
+   901→  );
+   902→}
+   903→
+   904→// ============================================================
+   905→// Main view
+   906→// ============================================================
+   907→export function AdminView() {
+   908→  const user = useAppStore((s) => s.user);
+   909→
+   910→  if (!user || !canManageUsers(user.role) || !canDeleteEverything(user.role)) {
+   911→    return (
+   912→      <div className="flex items-center justify-center py-16">
+   913→        <Card className="max-w-md border-red-500/30 bg-red-500/5">
+   914→          <CardHeader>
+   915→            <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+   916→              <ShieldAlert className="size-5" />
+   917→              Access Denied
+   918→            </CardTitle>
+   919→            <CardDescription>
+   920→              This area is restricted to Super Admin users.
+   921→            </CardDescription>
+   922→          </CardHeader>
+   923→          <CardContent>
+   924→            <p className="text-sm text-muted-foreground">
+   925→              Your role is <span className="font-mono font-semibold">{user?.role ?? "none"}</span>.
+   926→              Contact a Super Admin if you believe this is an error.
+   927→            </p>
+   928→          </CardContent>
+   929→        </Card>
+   930→      </div>
+   931→    );
+   932→  }
+   933→
+   934→  return (
+   935→    <div className="space-y-4">
+   936→      <div className="flex items-center gap-3">
+   937→        <div className="rounded-lg bg-aqua/15 p-2">
+   938→          <Shield className="size-5 text-aqua" />
+   939→        </div>
+   940→        <div>
+   941→          <h1 className="text-xl font-bold">Admin Maintenance</h1>
+   942→          <p className="text-xs text-muted-foreground">
+   943→            Database stats, audit log, danger zone and user management.
+   944→          </p>
+   945→        </div>
+   946→      </div>
+   947→
+   948→      <StatsCard />
+   949→      <AuditCard />
+   950→      <DangerZoneCard />
+   951→      <UserManagementCard />
+   952→
+   953→      <div className="flex items-center justify-center gap-2 pt-4 text-[11px] text-muted-foreground">
+   954→        <Activity className="size-3 text-aqua" />
+   955→        LanePulse Pro • Admin Console
+   956→      </div>
+   957→    </div>
+   958→  );
+   959→}
+   960→

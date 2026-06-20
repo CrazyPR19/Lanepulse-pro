@@ -1,3 +1,5 @@
+318
+---
 ---
 Task ID: 1
 Agent: main (orchestrator)
@@ -98,7 +100,7 @@ Work Log:
 - Created src/app/api/groups/route.ts — GET (any auth) supports ?active=, ordered by createdAt desc, includes memberCount (only active members counted). POST (COACH+) validates groupName, parses groupDate, audits "CREATE_GROUP". Exports toGroupDTO.
 - Created src/app/api/groups/[id]/route.ts — GET returns group + active members (with swimmerName) ordered by laneNo. PATCH (COACH+) updates fields. DELETE (SUPER_ADMIN): if confirm==="CLEAR GROUPS" AND no sessions reference the group, hard-delete; otherwise soft-delete (isActive=false). Audits "DELETE_GROUP".
 - Created src/app/api/groups/[id]/members/route.ts — GET lists active members (with swimmerName). POST (COACH+) clamps laneNo 1..12, validates lane conflict (409 with helpful message) and same-swimmer-twice (deactivates old active membership for the swimmer), audits "ASSIGN_LANE". PUT (COACH+) bulk-replaces all active members in a transaction: validates no duplicate lanes/swimmers in payload, deactivates existing actives (with cleanup of conflicting inactive rows for the unique constraint), creates new actives. Audits "BULK_ASSIGN_LANES".
-- Created src/app/api/groups/[id]/members/[memberId]/route.ts — PATCH (COACH+) handles laneNo/swimmerId/isActive updates; treats swimmerId change as a swap; validates lane conflicts and same-swimmer-twice; carefully manages the @@unique([groupId, laneNo, isActive]) constraint by deleting conflicting inactive rows. DELETE (COACH+) deactivates the member (with cleanup), audits "REMOVE_FROM_LANE".
+- Created src/app/api/groups/[id]/members/emberId]/route.ts — PATCH (COACH+) handles laneNo/swimmerId/isActive updates; treats swimmerId change as a swap; validates lane conflicts and same-swimmer-twice; carefully manages the @@unique([groupId, laneNo, isActive]) constraint by deleting conflicting inactive rows. DELETE (COACH+) deactivates the member (with cleanup), audits "REMOVE_FROM_LANE".
 - Created src/app/api/users/route.ts — GET (SUPER_ADMIN) lists all users as DTOs, ordered by createdAt. POST (SUPER_ADMIN) validates role enum + unique username/email, hashes password via hashPassword, audits "CREATE_USER".
 - Created src/app/api/users/[id]/route.ts — PATCH (SUPER_ADMIN) updates fields, hashes password if provided, prevents demoting/deactivating the last super admin (409), audits "UPDATE_USER". DELETE (SUPER_ADMIN) blocks self-delete (409) and last-super-admin delete (409); if confirm==="DELETE USER" AND no audit logs AND no sessions reference the user, hard-delete (also cleans performance_notes); otherwise soft-delete (isActive=false). Audits "DELETE_USER".
 - Created src/app/api/admin/stats/route.ts — GET (SUPER_ADMIN) returns counts {users, swimmers, styles, groups, sessions, sessionLanes, sessionLaps, performanceNotes, auditLogs}.
@@ -119,7 +121,7 @@ Stage Summary:
   * All admin/clear-* routes require explicit `confirm` strings (documented in 400 response messages).
   * All Date inputs (dateOfBirth, groupDate) accept ISO strings; empty string → null. Invalid date → 400.
   * Role enforcement: setup POST is the only fully-public mutation; everything else requires requireUser() or requireRole(...). GET on styles/swimmers/groups/group-members is any authenticated user; mutations on swimmers/groups/members require COACH+; users/styles/admin/* require SUPER_ADMIN.
-  * Deviations from spec: (1) `groups/[id]/members/[memberId]` PATCH audit action is "TRANSFER_LANE" (spec said "Audit" without naming it) — chosen for clarity. (2) `users/[id]` DELETE hard-delete path also blocks when the user has created training sessions (NOT NULL createdByUserId), not just audit logs — added for referential safety; spec only mentioned audit logs but sessions are non-nullable FK. (3) `admin/clear-groups` strategy: hard-delete groups with no sessions, soft-delete groups with sessions — chose this hybrid because hard-deleting groups that have sessions would cascade-NULL session.groupId which loses history; the spec's "OR" wording left room for this.
+  * Deviations from spec: (1) `groups/[id]/members/emberId]` PATCH audit action is "TRANSFER_LANE" (spec said "Audit" without naming it) — chosen for clarity. (2) `users/[id]` DELETE hard-delete path also blocks when the user has created training sessions (NOT NULL createdByUserId), not just audit logs — added for referential safety; spec only mentioned audit logs but sessions are non-nullable FK. (3) `admin/clear-groups` strategy: hard-delete groups with no sessions, soft-delete groups with sessions — chose this hybrid because hard-deleting groups that have sessions would cascade-NULL session.groupId which loses history; the spec's "OR" wording left room for this.
 
 ---
 Task ID: 7
@@ -178,12 +180,12 @@ Work Log:
   * Derived `effectiveSelectedGroupId = selectedGroupId ?? groupsQ.data?.[0]?.id ?? null` — auto-selects the first group on load WITHOUT a `setState`-in-effect (satisfies the strict `react-hooks/set-state-in-effect` ESLint rule).
   * Lane Board: 12 lane cards in a responsive grid (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`). Each `LaneCard` shows lane number (big navy tabular-nums), swimmer name or "Empty", and action buttons — "Assign" (empty lanes), "Replace" + "Remove" (occupied lanes). Mobile-friendly 44px+ touch targets.
   * Side panel (320px on desktop, below on mobile): "Group Details" card (name/level/date/members/remarks) + "Quick Transfer" card with aqcu-amber target-lane-occupied warning.
-  * **Quick Transfer** flow: pick a swimmer from this group → pick target group → pick target lane. Looks up target group's members (separate `useQuery`) to detect lane conflicts. Same-group transfer = `PATCH /api/groups/[id]/members/[memberId]` with new `laneNo`. Cross-group transfer = `POST` to target group + `DELETE` from source. If target lane occupied, an `AlertDialog` confirms the replace: removes the occupant first, then performs the transfer.
+  * **Quick Transfer** flow: pick a swimmer from this group → pick target group → pick target lane. Looks up target group's members (separate `useQuery`) to detect lane conflicts. Same-group transfer = `PATCH /api/groups/[id]/members/emberId]` with new `laneNo`. Cross-group transfer = `POST` to target group + `DELETE` from source. If target lane occupied, an `AlertDialog` confirms the replace: removes the occupant first, then performs the transfer.
   * **Swimmer Picker Dialog**: searchable (Input + Lucide `Search` icon) list of active swimmers not already in this group. Exclude list: in assign mode, all current members; in replace mode, all current members EXCEPT the one being replaced (allows re-picking as no-op). Picking calls `POST /api/groups/[id]/members` (assign) or `PATCH` (replace `swimmerId`).
   * **New Group Dialog**: groupName (required) + groupLevel + groupDate + remarks → `POST /api/groups`.
   * **Edit Group Dialog**: same fields pre-populated from current group → `PATCH /api/groups/[id]`.
   * **Bulk Replace Dialog**: 12-lane form (one Select per lane) → `PUT /api/groups/[id]/members` with `{ members: [{ swimmerId, laneNo }] }`. Client-side validation rejects duplicate lanes / duplicate swimmers before submitting.
-  * **Remove Confirm**: `AlertDialog` warning that historical sessions are unaffected → `DELETE /api/groups/[id]/members/[memberId]`.
+  * **Remove Confirm**: `AlertDialog` warning that historical sessions are unaffected → `DELETE /api/groups/[id]/members/emberId]`.
   * All mutations use `useMutation` with `onSuccess` query invalidation (`["groups","active"]` + `["group", effectiveSelectedGroupId]` + target-group key for cross-group transfers) and `toast` feedback (sonner).
   * Backend errors (lane conflict, same-swimmer-twice, etc.) surface as friendly `toast.error(msg)` messages.
   * VIEWER role: write actions hidden (`canManage` gate); read-only browsing of lane board + group details still allowed.
@@ -298,207 +300,3 @@ Work Log:
   * Timer: selected Free Style / 50m / group -> "Load Selected" populated 12-lane board (6 ready). ✅
   * "Start All Ready (6)" -> all 6 timers running with live MM:ss.cc display. ✅
   * Console mode: captured lap on lane 1. ✅
-  * Finish Capture mode: finished lanes 1, 2, 3 (times 00:42.62 / 00:43.23 / 00:43.86). ✅
-  * Lap Capture mode: recorded laps on lanes 4, 5, 6 (#1 badges). ✅
-  * "Stop All" -> remaining 3 stopped. "Complete & Save" -> session persisted with auto-name "Free Style - 50m - Senior Sprint Heat A - 2026-06-19 11:52". ✅
-  * Session History: saved session visible with all columns. ✅
-  * Analysis > Group Ranking: ranked table with rank/lane/swimmer/time/gap, Adam Peaty #1. ✅
-  * Analysis > Recommendations: generated for Adam Peaty / Free Style / 50m -> correctly returned "Not Enough Data" (only 1 session). ✅
-  * Admin: table counts, audit log (SETUP_CREATE_ADMIN), user management table. ✅
-  * Dashboard: welcome header, quick actions, recent session card. ✅
-  * Mobile (390x844): bottom nav (Dashboard/Timing/Swimmers/Groups/More), timer console usable. ✅
-  * Desktop (1440x900): sidebar + full layout. ✅
-- Final lint: `bun run lint` -> CLEAN (zero errors). ✅
-- Dev log: all API routes returning 200, no runtime errors, no hydration mismatches. ✅
-
-Stage Summary:
-- LanePulse Pro is a complete, production-style swim training application built on Next.js 16 + Prisma/SQLite + NextAuth + Tailwind/shadcn.
-- All 14 spec modules implemented: Login & RBAC, DB setup (built-in SQLite diagnostic), 11 DB tables, Swimmer Master, Group/Heat Builder (12 lanes), Fast Timing Console (default) with Finish + Lap Capture modes, Session History with CSV export, Analysis Dashboard (6 reports + Recommendation Engine), Admin Maintenance with typed confirmations + audit, Mobile/PWA (manifest + responsive), Sporty UI (navy/aqua/white + wave/stopwatch logo).
-- All 12 lessons from the existing LanePulse Trainer app addressed: separate selected/loaded/next group IDs, group_id as PK (not name), Fast Timing Console is default, Finish+Lap capture modes, strong text contrast, large coach-friendly buttons, session distance stored separately, "Free Style" naming, style+distance analysis gating, swimmer history preserved on deactivate, admin delete with typed confirmation.
-- App is live and verified end-to-end via Agent Browser.
-
----
-Task ID: P-API
-Agent: parent-portal-api-agent
-Task: Build the PARENT PORTAL API routes (4 route files) — list parent's children, full child summary, and admin parent-access CRUD.
-
-Work Log:
-- Read foundation contracts in src/lib/types.ts (ParentSwimmerDTO, ParentChildSummaryDTO), src/lib/helpers.ts (formatSeconds), src/lib/session.ts (requireRole, ForbiddenError), src/lib/api.ts (json, errorResponse, parseBody, requireFields, audit), src/lib/analysis.ts (avg, min, max, changeBucket) and prisma/schema.prisma (ParentSwimmer model with @@unique([parentUserId, swimmerId])).
-- Reviewed existing patterns in src/app/api/analysis/recommendations/route.ts, lap-performance/route.ts, current-vs-previous/route.ts, users/route.ts, users/[id]/route.ts for convention consistency.
-- Created `src/app/api/parent/children/route.ts` (GET): requires role PARENT; queries `parentSwimmer` where `parentUserId = session.userId AND isActive = true` with `swimmer` included; returns `ParentSwimmerDTO[]` with `swimmerName` embedded. SECURITY: only the authenticated parent's own mappings are ever returned.
-- Created `src/app/api/parent/children/[swimmerId]/summary/route.ts` (GET): requires role PARENT; first verifies an active `ParentSwimmer` mapping for the swimmerId (else 403 "No access to this swimmer"); then computes the full `ParentChildSummaryDTO`:
-  * `totalSessions`: count of FINISHED session_lanes for the swimmer.
-  * `latestSession`: most recent FINISHED lane (by sessionDate) with sessionName/sessionDate/styleName/distanceMeters/resultText/elapsedSeconds.
-  * `bestTimes`: FINISHED lanes grouped by (styleId, distanceMeters), min(elapsedSeconds), with `bestText = formatSeconds(...)`.
-  * `latestVsPrevious`: uses the latest lane's styleId+distanceMeters and finds the previous FINISHED lane with the SAME style+distance; computed via `changeBucket` (negative change = IMPROVED).
-  * `trend`: all FINISHED lanes, ASC by sessionDate, with styleName + distanceMeters.
-  * `lapConsistency`: from the latest lane (by sessionDate) that has laps — avgLap/fastestLap/slowestLap/dropOffPercent/enduranceDrop (enduranceDrop = lastLap is slowest AND lastLap > avgLap*1.1). Null when no laps.
-  * `last5Sessions`: 5 most recent sessions where this swimmer has any lane (any status), deduped by sessionId (prefers FINISHED lane when multiple lanes exist per session).
-  * `recommendations`: 1-4 POSITIVE parent-friendly recs built from improvement direction + lap analysis + personal best celebration. Always at least 1. Uses encouraging, non-medical, non-pressuring language.
-  * Two queries only (FINISHED lanes with style+laps; all lanes with style) — no N+1.
-- Created `src/app/api/admin/parent-access/route.ts`:
-  * GET (COACH+): returns ALL mappings with `parentName` (user.fullName) + `swimmerName`, ordered by createdAt desc.
-  * POST (COACH+): body `{ parentUserId, swimmerId }`. Validates parentUserId exists, role=PARENT, isActive; swimmerId exists + active. Duplicate check on compound unique — if active exists, 409; if inactive exists, reactivate; else create. Audits "ASSIGN_PARENT_ACCESS".
-- Created `src/app/api/admin/parent-access/[id]/route.ts`:
-  * DELETE (COACH+): body optional `{ permanent?: boolean }`. Default soft-deletes (isActive=false). If permanent=true, hard deletes (always safe — no dependencies on ParentSwimmer). Audits "REMOVE_PARENT_ACCESS".
-- Verified the Prisma compound unique key `parentUserId_swimmerId` is accepted by the client at runtime.
-- Ran `bun run lint` → CLEAN (zero errors).
-- Verified all 4 routes compile cleanly and enforce auth via curl (returned 401 without session). Dev log shows successful compilation of all 4 routes.
-
-Stage Summary:
-- 4 route files created, fully typed against `ParentSwimmerDTO` and `ParentChildSummaryDTO`, no lint errors.
-- Security enforcement: parent routes use `requireRole("PARENT")` AND verify an active mapping for the specific swimmerId (403 otherwise); admin routes use `requireRole("COACH", "SUPER_ADMIN")`. Every handler is wrapped in try/catch returning `errorResponse(err)`.
-- All Date fields converted to ISO strings; all Float seconds fields returned as `number | null`. No N+1 queries.
-- Audit actions "ASSIGN_PARENT_ACCESS" and "REMOVE_PARENT_ACCESS" recorded for all write operations.
-- Ready for the parent-portal frontend agent to consume these endpoints.
-
----
-Task ID: P-FE
-Agent: frontend-parent-mobile
-Task: Build Parent Portal Dashboard view, add Parent Access Management section to Admin view, and write the Mobile Publishing Guide (PWA + Capacitor roadmap).
-
-Work Log:
-- Read /home/z/my-project/worklog.md to consume foundation contracts (DTOs in src/lib/types.ts incl. ParentSwimmerDTO + ParentChildSummaryDTO; ViewKey incl. "parent" in src/lib/store.ts with defaultViewForRole routing PARENT → "parent"; api client in src/lib/api-client.ts; app-shell.tsx PARENT "My Child" nav item with HeartHandshake icon). Confirmed exact shape of ParentChildSummaryDTO (swimmerId, swimmerName, age, gender, totalSessions, latestSession, bestTimes[], latestVsPrevious, trend[], recommendations[], lapConsistency, last5Sessions[]) by reading types.ts lines 229-295.
-- Inspected admin-view.tsx (959 lines) to understand existing card pattern (StatsCard, AuditCard, DangerZoneCard, UserManagementCard) and shadcn/ui imports. Noted RoleBadge map only had SUPER_ADMIN/COACH/VIEWER — needed PARENT added.
-- Inspected analysis-view.tsx to confirm Recharts usage pattern in this project (LineChart + ResponsiveContainer + CartesianGrid + XAxis + YAxis + Tooltip + Line with AQUA="#1f9fbf" constant + formatSeconds tickFormatter + oklch stroke colors). Used the same pattern for the parent dashboard's Progress Trend chart.
-- Inspected globals.css to confirm safe-area CSS classes (.safe-top, .safe-bottom, .safe-x, .lp-bottom-nav) and lp-scroll/lp-timer-digits helper classes exist — referenced all of them in the Mobile Publishing Guide.
-
-### Deliverable 1: src/components/views/parent-dashboard-view.tsx (OVERWROTE stub)
-Full Parent Portal Dashboard (~1070 lines, "use client"). Sections, in render order:
-1. **Header** — "My Child's Progress" with HeartHandshake icon and friendly subtitle "Track your child's swimming journey."
-2. **Role safety check** — if user.role !== "PARENT", shows an Access Denied card (defensive; routing already gates this).
-3. **Child selector** — if parent has >1 active child, shows a Select dropdown. If only 1, auto-selects via derived `effectiveSelectedId` (NO setState-in-effect — satisfies strict ESLint rule). If 0, shows NoChildrenState card: "No children assigned yet. Please ask your coach to grant access."
-4. **ChildSummaryBlock** (key={swimmerId} so it remounts cleanly when switching children) — uses `useQuery(["parent","child-summary",swimmerId])` with `enabled: !!swimmerId`, fetching `GET /api/parent/children/{swimmerId}/summary`. Renders all sub-sections below.
-5. **Swimmer header card** — large avatar icon + swimmer name + age badge + gender badge + total sessions count.
-6. **Summary cards** — responsive grid `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4`:
-   - Total Sessions (History icon, aqua accent)
-   - Latest Time (Timer icon, navy accent, shows resultText or formatSeconds(elapsedSeconds))
-   - Best Time (Trophy icon, amber accent, shows bestTimes[0].bestText)
-   - Improvement (TrendingUp/Down icon, accent varies by direction; badge: Improved/Slower/Same/N/A; value = ±N.NNs based on changeSeconds with minus sign for negative)
-7. **Latest Session callout** — highlighted Card with `bg-gradient-to-br from-aqua/10 to-navy/5 border-aqua/30`. Shows sessionName, date (Calendar icon), Style/Distance badge, big result text in a sub-card, and a friendly sentence: "Best recent performance: {style} {distance}m in {time}."
-8. **Improvement banner** — color-coded by tone (improved=emerald, slower=red, same=aqua, neutral=muted). Language exactly per spec:
-   - IMPROVED: "Improved by {abs(changeSeconds)} seconds compared to previous session. Great progress!"
-   - SLOWER: "Timing increased by {abs(changeSeconds)} seconds. Coach may review technique and pacing."
-   - SAME: "Timing is consistent with the previous session."
-   - NOT_ENOUGH_DATA: "More sessions needed to show improvement trend."
-9. **Progress Trend chart** — Recharts LineChart with aqua line (#1f9fbf), CartesianGrid, XAxis (date), YAxis (formatSeconds tickFormatter), Tooltip (labelFormatter shows styleName+distanceMeters), monotone Line with aqua dots. Title "Progress Over Time" with description "Lower time = better." If <2 trend points, shows "Need more sessions to chart progress." empty state.
-10. **Best Times table + Coach Recommendations** — 2-col grid on desktop, stacked on mobile:
-    - Best Times: ScrollArea (h-72) + Table with styleName / distance / bestText (aqua, font-mono, bold) / date columns. Empty state when no best times.
-    - Training Focus (recommendations): each recommendation as a friendly card with aqua border, whatHappened as heading, whatToTrainNext[] as bullet list with aqua dot bullets. Category badge if present.
-11. **Lap Consistency card** (only renders when lapConsistency !== null) — 3-col grid (avgLap, fastestLap green, slowestLap red) + 2-col grid (dropOffPercent, enduranceDrop badge). If enduranceDrop, shows amber warning: "Endurance drop detected. Child may benefit from pacing and endurance sets."
-12. **Last 5 Sessions** — list of compact rows with Timer icon chip, sessionName, date+style+distance meta, and time on the right.
-13. **Loading/error states** — DashboardSkeleton for first load (header + child selector + 4 stat cards + callout + chart skeleton blocks); error card with retry button for query failures.
-- Design rules followed: sporty navy/aqua/white, NO indigo/purple, NO white-on-white, mobile-first, large readable text (parents aren't coaches), all times via formatSeconds, Lucide icons throughout (HeartHandshake, Timer, Trophy, TrendingUp, TrendingDown, History, Calendar, Award, Sparkles, AlertCircle, Loader2), useQuery + useQueryClient from @tanstack/react-query, api from @/lib/api-client, toast from sonner, useAppStore for current user, types from @/lib/types, cn from @/lib/utils. Skeleton loaders while fetching. Derived `effectiveSelectedId` pattern (no setState-in-effect) for auto-selecting first child.
-
-### Deliverable 2: Parent Access Management section added to admin-view.tsx
-Made 4 targeted edits to /home/z/my-project/src/components/views/admin-view.tsx:
-1. Added imports: HeartHandshake, Link2 to lucide-react import list; ParentSwimmerDTO, SwimmerDTO to types import.
-2. Updated RoleBadge map to include PARENT: "bg-pink-500/15 text-pink-700 border-pink-500/30 dark:text-pink-300".
-3. Added "PARENT" option to the user form Role Select dropdown (so admins can create Parent-role users — required by the "Create a Parent-role user first in User Management above" hint in the spec).
-4. Inserted a new `ParentAccessCard` component (defined at module scope to satisfy react-hooks/static-components lint rule) just before the main AdminView export. The card:
-   - Fetches `GET /api/admin/parent-access` → ParentSwimmerDTO[] for current mappings table.
-   - Reuses `["users"]` query (already cached by UserManagementCard) and filters role === "PARENT" && isActive for the parent Select dropdown.
-   - Fetches `GET /api/swimmers?active=true` → SwimmerDTO[] for the swimmer Select dropdown.
-   - Assign form: 2-col grid (Parent User select + Swimmer select) + "Assign" button calling `POST /api/admin/parent-access { parentUserId, swimmerId }`.
-   - If no parent users exist, shows amber hint: "No Parent-role users found. Create a Parent-role user first in User Management above." If no active swimmers, shows the corresponding hint.
-   - Current Mappings table: parent name, swimmer name, status badge (Active emerald / Inactive muted), created date, Remove button.
-   - Remove confirm AlertDialog → `DELETE /api/admin/parent-access/[id]`. Toasts success/error. Invalidates ["admin","parent-access"] + ["admin","audit"] + ["admin","stats"] on both mutations.
-5. Added `<ParentAccessCard />` to the main AdminView render after UserManagementCard.
-- Same card styling as the rest of admin view (bg-card, CardHeader with aqua icon, CardDescription, scrollable bordered table with sticky header, h-11+ touch targets, aqua primary buttons).
-
-### Deliverable 3: docs/MOBILE_PUBLISHING_GUIDE.md created
-Comprehensive ~12KB markdown doc with 10 sections + summary:
-1. **Current PWA Status** — table of all PWA primitives in place (manifest.webmanifest, layout.tsx metadata.appleWebApp, viewport.themeColor #0b1f3a, viewportFit cover, public/logo.svg icon, safe-area CSS classes, .lp-bottom-nav). Includes the actual CSS class definitions from globals.css.
-2. **Testing as a PWA** — step-by-step install instructions for iOS (Safari → Share → Add to Home Screen), Android (Chrome → menu → Install app), Desktop (Chrome/Edge address bar install icon).
-3. **Local Network Testing** — `bun run dev` (already binds 0.0.0.0:3000 in this project), `ifconfig`/`ipconfig` to find LAN IP, open `http://<IP>:3000` on phone. Notes about same-Wi-Fi requirement and guest-network isolation. Mentions the Caddyfile gateway.
-4. **Future Capacitor Steps** (documentation only — NOT installed) — explains each command in the sequence: `npm install @capacitor/core @capacitor/cli`, `npx cap init LanePulsePro com.lanepulse.pro`, `npm run build`, `npx cap add android`, `npx cap add ios`, `npx cap sync`. Includes a sample capacitor.config.ts showing webDir + appId + appName + androidScheme. Explains what `cap sync` does (copy + update + migrate). Explains `cap open android/ios` to launch native IDEs.
-5. **Environment-based API URL** — documents the current relative-path pattern in src/lib/api-client.ts (works for dev server, production reverse-proxy, and PWA installs). Documents the recommended future pattern for Capacitor: set `NEXT_PUBLIC_API_BASE_URL`, prefix fetch calls with `BASE`, configure CORS for capacitor://localhost. Notes NextAuth cookie caveat for native webviews (suggest JWT/Bearer-token auth for native as future work). Notes the same pattern applies to Socket.io (`io("/?XTransformPort=3003")` → `io(\`${BASE}/?XTransformPort=3003\`)`).
-6. **Building Android APK/AAB** — `npx cap build android` (APK) and `./gradlew bundleRelease` (AAB). Option B: open in Android Studio → Build → Generate Signed Bundle / APK. Includes `adb install -r` sideload command. Notes keystore must be preserved across releases.
-7. **Building iOS** — requires Mac + Xcode. `npx cap open ios` → Cmd+R to run on simulator/device → Product → Archive for App Store/TestFlight. Notes Apple Developer Program membership ($99/year) required for App Store / TestFlight; free Apple ID works for 7-day local dev installs.
-8. **Production API URL** — table of env vars to set on production host: NEXTAUTH_URL (canonical public URL), NEXTAUTH_SECRET (openssl rand -base64 32), DATABASE_URL, NEXT_PUBLIC_API_BASE_URL (empty for web/PWA, set for Capacitor). Smoke-test checklist after deploy.
-9. **Mobile Testing Checklist** — granular checkbox list grouped by area: Auth & Navigation, Timing Console (critical path — session setup, 12-lane board, finish capture, lap capture, bulk controls, next heat dialog), Data Capture & History, Parent Portal (PARENT role login, child selector, summary cards, progress chart, best times table, recommendations, lap consistency, last 5 sessions), General Mobile UX (no horizontal scroll, no overlap, large touch targets, toasts visible, forms scroll, dark mode), Safe-Area/Notch Devices (status bar, home indicator, landscape).
-10. **Current Limitations** — Next.js SSR requires a running server (not pure static); hosting options that work (Vercel, Railway, Fly.io, self-hosted VM, Docker). Capacitor considerations: two paths — Option A `output: export` (breaks API routes/auth/Prisma, significant refactor) vs Option B keep backend server + point app at it via NEXT_PUBLIC_API_BASE_URL (recommended, minimal code changes). Prisma+SQLite multi-instance caveat (switch to Postgres for horizontal scaling). NextAuth cookies in webviews (consider Bearer-token auth for native). Service worker / offline cache: not currently installed (no next-pwa/Workbox); app requires network to load.
-- Summary section at the bottom: Today (PWA), Future (Capacitor), Production — three quick-reference bullet lists.
-
-### Conventions followed (MANDATORY section)
-- All views are "use client" components.
-- shadcn/ui from @/components/ui/* used throughout (Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Badge, Input, Label, Select, ScrollArea, Skeleton, Table, AlertDialog, Dialog).
-- useQuery/useMutation/useQueryClient from @tanstack/react-query.
-- api from @/lib/api-client (get/post/patch/del helpers).
-- toast from sonner.
-- formatSeconds, formatMs (formatSeconds used; formatMs not needed since all DTO times are in seconds) from @/lib/helpers.
-- Types from @/lib/types (ParentSwimmerDTO, ParentChildSummaryDTO, Gender, SwimmerDTO, UserDTO, Role).
-- cn from @/lib/utils.
-- Recharts LineChart with aqua line (#1f9fbf), ResponsiveContainer, XAxis (date), YAxis (formatSeconds tickFormatter), Tooltip (labelFormatter shows style+distance), CartesianGrid, Line (monotone, strokeWidth 3, dot r=4).
-- Lucide icons: HeartHandshake, Timer, Trophy, TrendingUp, TrendingDown, History, Calendar, Award, Sparkles, AlertCircle, Loader2 in parent-dashboard; HeartHandshake, Link2 added to admin-view.
-- Sporty navy/aqua/white theme. NO indigo/purple. Mobile-first. Large touch targets (h-11+ for primary buttons). NO white-on-white. Aqua primary buttons (bg-aqua text-white hover:bg-aqua/90).
-- Parent dashboard language kept simple and positive (parents aren't coaches) — friendly sentences, no jargon, "Great progress!" / "Coach may review technique and pacing" tone.
-- Did NOT modify foundation files (types.ts, store.ts, api-client.ts, helpers.ts, app-shell.tsx, auth-gate.tsx, providers.tsx), timer-view.tsx, or other view files. Only edited admin-view.tsx (allowed per spec for the parent access section) and overwrote parent-dashboard-view.tsx stub.
-- Did NOT create any test files.
-
-Stage Summary:
-- 3 deliverables shipped:
-  1. src/components/views/parent-dashboard-view.tsx — full Parent Portal Dashboard (~1070 lines), overwrote the stub.
-  2. src/components/views/admin-view.tsx — added ParentAccessCard component + PARENT role support in RoleBadge and user form Select dropdown (1231 total lines, +272 from original 959).
-  3. docs/MOBILE_PUBLISHING_GUIDE.md — comprehensive PWA + Capacitor roadmap doc (~12KB, 10 sections + summary).
-- Lint status: `bun run lint` → CLEAN (zero errors, exit 0). ESLint passes for the entire project.
-- TypeScript status (my files): CLEAN. `bunx tsc --noEmit` reports zero errors in parent-dashboard-view.tsx and admin-view.tsx. (Pre-existing TS errors in src/app/api/admin/parent-access/route.ts:30 — that's the parallel P-API agent's backend file, not mine; src/components/timer-view.tsx:181 and src/lib/auth.ts:5 are pre-existing foundation issues documented in earlier worklog entries.)
-- Dev server: HTTP 200 on `/` confirmed in dev.log. The 401 responses on `/api/parent/children`, `/api/parent/children/test/summary`, `/api/admin/parent-access`, and `DELETE /api/admin/parent-access/test` in dev.log are the parallel P-API agent's smoke tests — they correctly return 401 because they're unauthenticated, confirming the backend routes exist and enforce auth as expected.
-- Deviations:
-  1. Used the derived `effectiveSelectedId` pattern (NO setState-in-effect) for auto-selecting the first child in parent-dashboard-view.tsx — this is the same pattern Task 6 (frontend-views-groups-history) used for auto-selecting the first group, and it satisfies the strict `react-hooks/set-state-in-effect` ESLint rule that this project enforces as an error.
-  2. The ParentChildSummaryDTO contract from types.ts shows `latestSession` as nullable; in the LatestSessionCallout component I added an empty-state branch ("No training sessions have been recorded yet...") for when latestSession is null — this is defensive and provides a friendly parent-facing empty state instead of rendering a half-empty callout card.
-  3. The "Best recent performance" sentence in LatestSessionCallout originally had a `time.toLowerCase().startsWith("dnf")` check that was a no-op (returned `time` either way) — left it as a simple `{time}` interpolation since resultText already contains either a formatted time or "DNF". Simplified the JSX.
-  4. Added PARENT role to RoleBadge map (pink accent) and to the user form Role Select in admin-view.tsx — this is a required addition because the spec's hint text says "Create a Parent-role user first in User Management above" which implies admins must be able to create PARENT users. Without this change, the Parent Access Management section would be unusable (no way to create parent users).
-- Conventions for downstream agents:
-  * `GET /api/parent/children` returns `ParentSwimmerDTO[]` (with `swimmerId`, `swimmerName?`, `isActive`, `parentUserId`, `parentName?`, `id`, `createdAt`). Parent dashboard filters to `isActive === true` for the selector and effective-selected derivation.
-  * `GET /api/parent/children/{swimmerId}/summary` returns `ParentChildSummaryDTO` — exact shape in types.ts lines 244-295. All nullable sub-objects (`latestSession`, `latestVsPrevious`, `lapConsistency`) are defensively handled with empty-state branches.
-  * `GET /api/admin/parent-access` returns `ParentSwimmerDTO[]` (same shape) for the admin mappings table.
-  * `POST /api/admin/parent-access { parentUserId, swimmerId }` returns `ParentSwimmerDTO` (the created mapping).
-  * `DELETE /api/admin/parent-access/[id]` removes a mapping.
-  * Query keys used: `["parent","children"]`, `["parent","child-summary",swimmerId]`, `["admin","parent-access"]`, `["users"]` (reused), `["swimmers","list","","active"]` (matches the swimmers-view query key pattern for cache reuse).
-  * The parent dashboard uses `key={effectiveSelectedId}` on ChildSummaryBlock so it remounts cleanly when switching children — no useState reset needed.
-  * The Mobile Publishing Guide is purely documentation — no code changes were made for Capacitor. The `output: export` path is documented as a future option but explicitly discouraged because it would break all API routes + NextAuth + Prisma.
-
----
-Task ID: MOBILE-FIX-FINAL
-Agent: main (orchestrator)
-Task: Fix mobile layout overlap, add Parent role + Parent Portal, PWA readiness, mobile UX improvements
-
-Work Log:
-- ROOT CAUSE of mobile overlap: timer-view.tsx line 302 used `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6` — on mobile (<640px) this crammed 6 form fields into 2 columns (~160px each), causing Select triggers (with chevron icons) and date inputs (with calendar icons) to overlap.
-- FIX: Changed Session Setup grid to `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4` (stack vertically on mobile, 2-col tablet, 3-col desktop). Increased touch targets from h-9 (36px) to h-11 (44px) for inputs/selects and h-12 (48px) for the Load button. Added `w-full min-w-0` to all field wrappers.
-- Added collapsible Session Setup card: when a group is loaded, a Collapse/Expand button appears in the card header, letting coaches hide the setup form to give more space to timing controls.
-- Improved bulk controls: mobile uses 2-col grid with full-width h-12 buttons; desktop uses inline flex.
-- Added iOS safe-area support: `viewport-fit= cover` in layout viewport meta, `.safe-top`/`.safe-bottom`/`.safe-x`/`.lp-bottom-nav` CSS classes using `env(safe-area-inset-*)`. Header and bottom nav now respect notched/Dynamic Island devices.
-- Added `overflow-x: hidden` on html/body to prevent any horizontal scroll.
-- Increased main content bottom padding to `pb-24 lg:pb-6` so content never hides behind the mobile bottom nav (56px nav + safe area).
-- Updated AppShell: added PARENT role nav item ("My Child" with HeartHandshake icon), mobile bottom nav shows 4 items + More, max-w-[85vw] on slide-over sidebar to prevent overflow on small screens.
-- Fixed React setState-in-render error: removed inline `setView` call from AppShell render body (was causing "Cannot update a component while rendering a different component" error). Role-based view redirect is handled by AuthGate's useEffect.
-- Added PARENT role to: types.ts (Role union), helpers.ts (canViewReports, canManageParentAccess, isParent), store.ts (ViewKey "parent", canAccess, defaultViewForRole), auth-gate.tsx (routing + auto-redirect), app-shell.tsx (nav), users API route (VALID_ROLES), users/[id] API route (VALID_ROLES).
-- Added ParentSwimmer model to Prisma schema (parentUserId, swimmerId, isActive, createdAt, @@unique). Ran db:push + db:generate. Added back-relations on User and Swimmer.
-- Added ParentSwimmerDTO + ParentChildSummaryDTO types to types.ts.
-- Built 4 parent API routes (via subagent P-API): GET /api/parent/children, GET /api/parent/children/[swimmerId]/summary, GET+POST /api/admin/parent-access, DELETE /api/admin/parent-access/[id]. All enforce role-based security (parent must have active mapping to access child data; admin routes require COACH+).
-- Built Parent Dashboard view (via subagent P-FE): child selector, summary cards (total sessions, latest time, best time, improvement), latest session callout, improvement message (friendly language), progress trend chart (Recharts), best times table, training focus recommendations, lap consistency, last 5 sessions.
-- Added Parent Access Management section to admin-view.tsx (via subagent P-FE): assign form (parent + swimmer selectors), current mappings table with remove button.
-- Created docs/MOBILE_PUBLISHING_GUIDE.md (via subagent P-FE): PWA status, testing instructions, Capacitor roadmap, environment-based API URL pattern, Android/iOS build steps, mobile testing checklist.
-- Agent Browser verification:
-  * Mobile (390x844): Session Setup controls stack vertically — NO OVERLAP. ✅
-  * Horizontal scroll: 0px on both timer and parent dashboard. ✅
-  * Parent user created (username: parent, password: parent123, role: PARENT). ✅
-  * Swimmer assigned to parent via admin parent-access (John Parent → Adam Peaty). ✅
-  * Parent login → auto-routed to "My Child" dashboard. ✅
-  * Parent dashboard shows: total sessions, latest time (00:42.62), best time, improvement (N/A - 1 session), latest performance, trend chart, best times table, training focus recommendations, lap consistency. ✅
-  * Parent can only see assigned child (Adam Peaty) — no other swimmers. ✅
-  * Admin Parent Access Management section renders with mappings table + assign form. ✅
-  * Audit log shows ASSIGN_PARENT_ACCESS action. ✅
-  * No React errors, no console errors, no dev log errors. ✅
-  * Lint: CLEAN (zero errors). ✅
-
-Stage Summary:
-- Mobile layout overlap FIXED: Session Setup now stacks vertically on mobile (grid-cols-1), 2-col on tablet (sm:grid-cols-2), 3-col on desktop (lg:grid-cols-3). Touch targets 44-48px. No horizontal scroll.
-- Parent role fully implemented: PARENT can log in, see only their assigned child's dashboard, view progress/trends/recommendations in parent-friendly language. Cannot access timer, swimmers, groups, admin, or settings.
-- Parent-child mapping: ParentSwimmer table with security enforcement on all parent API routes (403 if no active mapping).
-- Parent Access Management: admin/coach can assign/remove parent-child access via Admin view.
-- PWA readiness: manifest, icons, theme color, viewport-fit=cover, safe-area CSS, mobile publishing guide doc.
-- Collapsible Session Setup: coaches can collapse the setup card after loading a group for more timing space.
-- All changes verified end-to-end via Agent Browser on both mobile (390x844) and desktop (1440x900) viewports.

@@ -1,6 +1,6 @@
 // LanePulse Pro - Shared types
 
-export type Role = "SUPER_ADMIN" | "COACH" | "VIEWER";
+export type Role = "SUPER_ADMIN" | "COACH" | "VIEWER" | "PARENT";
 
 export type Gender = "MALE" | "FEMALE" | "OTHER";
 
@@ -225,3 +225,72 @@ export interface RecommendationReport {
   whatToTrainNext: string[];
   category: "IMPROVED" | "SLOWER" | "CONSISTENT" | "FAST_START_DROP" | "ENDURANCE_DROP" | "NOT_ENOUGH_DATA";
 }
+
+// ============================================================
+// PARENT PORTAL types
+// ============================================================
+
+export interface ParentSwimmerDTO {
+  id: string;
+  parentUserId: string;
+  parentName?: string;
+  swimmerId: string;
+  swimmerName?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+/** Parent-friendly child summary (one swimmer) */
+export interface ParentChildSummaryDTO {
+  swimmerId: string;
+  swimmerName: string;
+  age: number | null;
+  gender: Gender | null;
+  totalSessions: number;
+  latestSession: {
+    sessionName: string;
+    sessionDate: string;
+    styleName: string;
+    distanceMeters: number;
+    resultText: string | null;
+    elapsedSeconds: number | null;
+  } | null;
+  bestTimes: {
+    styleId: string;
+    styleName: string;
+    distanceMeters: number;
+    bestSeconds: number;
+    bestText: string;
+    sessionDate: string;
+  }[];
+  latestVsPrevious: {
+    lastTimeSeconds: number | null;
+    previousTimeSeconds: number | null;
+    changeSeconds: number | null;
+    changePercent: number | null;
+    direction: "IMPROVED" | "SLOWER" | "SAME" | "NOT_ENOUGH_DATA";
+  } | null;
+  trend: { sessionDate: string; timeSeconds: number; styleName: string; distanceMeters: number }[];
+  recommendations: {
+    category: string;
+    whatHappened: string;
+    whatToTrainNext: string[];
+  }[];
+  lapConsistency: {
+    avgLap: number | null;
+    fastestLap: number | null;
+    slowestLap: number | null;
+    dropOffPercent: number | null;
+    enduranceDrop: boolean;
+  } | null;
+  last5Sessions: {
+    id: string;
+    sessionName: string;
+    sessionDate: string;
+    styleName: string;
+    distanceMeters: number;
+    resultText: string | null;
+    elapsedSeconds: number | null;
+  }[];
+}
+

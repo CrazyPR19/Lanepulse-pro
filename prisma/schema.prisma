@@ -28,6 +28,7 @@ model User {
   sessions       TrainingSession[]
   auditLogs      AuditLog[]
   performanceNotes PerformanceNote[]
+  parentSwimmers ParentSwimmer[]
 }
 
 // ============================================================
@@ -49,6 +50,7 @@ model Swimmer {
   sessionLanes  SessionLane[]
   sessionLaps   SessionLap[]
   performanceNotes PerformanceNote[]
+  parentSwimmers ParentSwimmer[]
 }
 
 // ============================================================
@@ -223,4 +225,23 @@ model AppConfig {
   key       String   @unique
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// PARENT PORTAL — parent-child access mapping
+// ============================================================
+
+model ParentSwimmer {
+  id            String   @id @default(cuid())
+  parentUserId  String
+  swimmerId     String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  parent  User     @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
+  swimmer Swimmer  @relation(fields: [swimmerId], references: [id], onDelete: Cascade)
+
+  @@unique([parentUserId, swimmerId])
+  @@index([parentUserId])
+  @@index([swimmerId])
 }

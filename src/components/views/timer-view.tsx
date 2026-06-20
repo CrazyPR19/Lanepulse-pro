@@ -42,6 +42,8 @@ import {
   AlertTriangle,
   Waves,
   FastForward,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -107,6 +109,7 @@ export function TimerView() {
   const [styles, setStyles] = useState<SwimmingStyleDTO[]>([]);
   const [groups, setGroups] = useState<TrainingGroupDTO[]>([]);
   const [saving, setSaving] = useState(false);
+  const [setupCollapsed, setSetupCollapsed] = useState(false);
 
   // Load styles + groups
   useEffect(() => {
@@ -292,109 +295,134 @@ export function TimerView() {
         </div>
       </div>
 
-      {/* Session setup + status panel */}
+      {/* Session setup + status panel (collapsible on mobile) */}
       <Card className="border-aqua/20">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Waves className="size-4 text-aqua" /> Session Setup & Status
+            <Waves className="size-4 text-aqua shrink-0" /> Session Setup & Status
+            {loadedGroupId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSetupCollapsed((c) => !c)}
+                className="ml-auto h-7 px-2 text-xs"
+              >
+                {setupCollapsed ? (
+                  <>
+                    <ChevronDown className="size-3.5" /> Expand
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="size-3.5" /> Collapse
+                  </>
+                )}
+              </Button>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Session Date</Label>
-            <Input
-              type="date"
-              value={meta.sessionDate.slice(0, 10)}
-              onChange={(e) =>
-                setMeta({
-                  sessionDate: new Date(e.target.value).toISOString(),
-                })
-              }
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Style</Label>
-            <Select
-              value={meta.styleId}
-              onValueChange={(v) => setMeta({ styleId: v })}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Select style" />
-              </SelectTrigger>
-              <SelectContent>
-                {styles.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.styleName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Distance (m)</Label>
-            <Select
-              value={String(meta.distanceMeters)}
-              onValueChange={(v) => setMeta({ distanceMeters: Number(v) })}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[25, 50, 100, 200, 400, 800, 1500].map((d) => (
-                  <SelectItem key={d} value={String(d)}>
-                    {d}m
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Session Name</Label>
-            <Input
-              value={meta.sessionName}
-              onChange={(e) => setMeta({ sessionName: e.target.value })}
-              placeholder="Auto-generated if blank"
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Select Group</Label>
-            <Select
-              value={selectedGroupId || ""}
-              onValueChange={(v) => {
-                const g = groups.find((x) => x.id === v);
-                setSelectedGroup(v, g?.groupName || null);
-              }}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Choose group" />
-              </SelectTrigger>
-              <SelectContent>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.groupName}
-                    {g.memberCount ? ` (${g.memberCount})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Action</Label>
-            <Button
-              onClick={handleLoadSelectedGroup}
-              disabled={!selectedGroupId}
-              className="w-full h-9 bg-navy hover:bg-navy/90"
-              size="sm"
-            >
-              <Layers className="size-3.5" /> Load Selected
-            </Button>
-          </div>
-        </CardContent>
+        {!setupCollapsed && (
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {/* Session Date — full width on mobile */}
+            <div className="space-y-1.5 w-full min-w-0">
+              <Label className="text-xs text-muted-foreground">Session Date</Label>
+              <Input
+                type="date"
+                value={meta.sessionDate.slice(0, 10)}
+                onChange={(e) =>
+                  setMeta({
+                    sessionDate: new Date(e.target.value).toISOString(),
+                  })
+                }
+                className="h-11 w-full"
+              />
+            </div>
+            {/* Style — full width on mobile */}
+            <div className="space-y-1.5 w-full min-w-0">
+              <Label className="text-xs text-muted-foreground">Style</Label>
+              <Select
+                value={meta.styleId}
+                onValueChange={(v) => setMeta({ styleId: v })}
+              >
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue placeholder="Select style" />
+                </SelectTrigger>
+                <SelectContent>
+                  {styles.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.styleName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Distance — full width on mobile */}
+            <div className="space-y-1.5 w-full min-w-0">
+              <Label className="text-xs text-muted-foreground">Distance (m)</Label>
+              <Select
+                value={String(meta.distanceMeters)}
+                onValueChange={(v) => setMeta({ distanceMeters: Number(v) })}
+              >
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[25, 50, 100, 200, 400, 800, 1500].map((d) => (
+                    <SelectItem key={d} value={String(d)}>
+                      {d}m
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Session Name — full width on mobile, spans 2 on desktop */}
+            <div className="space-y-1.5 w-full min-w-0 sm:col-span-2">
+              <Label className="text-xs text-muted-foreground">Session Name</Label>
+              <Input
+                value={meta.sessionName}
+                onChange={(e) => setMeta({ sessionName: e.target.value })}
+                placeholder="Auto-generated if blank"
+                className="h-11 w-full"
+              />
+            </div>
+            {/* Select Group — full width on mobile */}
+            <div className="space-y-1.5 w-full min-w-0">
+              <Label className="text-xs text-muted-foreground">Select Group</Label>
+              <Select
+                value={selectedGroupId || ""}
+                onValueChange={(v) => {
+                  const g = groups.find((x) => x.id === v);
+                  setSelectedGroup(v, g?.groupName || null);
+                }}
+              >
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue placeholder="Choose group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.groupName}
+                      {g.memberCount ? ` (${g.memberCount})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Load Selected Group button — full width, large touch target */}
+            <div className="space-y-1.5 w-full min-w-0 sm:col-span-2 lg:col-span-3">
+              <Label className="text-xs text-muted-foreground">Action</Label>
+              <Button
+                onClick={handleLoadSelectedGroup}
+                disabled={!selectedGroupId}
+                className="w-full h-12 bg-navy hover:bg-navy/90 text-base"
+              >
+                <Layers className="size-4" /> Load Selected Group
+              </Button>
+            </div>
+          </CardContent>
+        )}
 
-        {/* Status panel */}
-        <div className="px-6 pb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 border-t pt-3 mt-1">
+        {/* Status panel — always visible (even when setup collapsed) */}
+        <div className="px-4 sm:px-6 pb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 border-t pt-3 mt-1">
           <StatusChip
             label="Selected Group"
             value={selectedGroupName || "—"}
@@ -421,36 +449,36 @@ export function TimerView() {
         </div>
       </Card>
 
-      {/* Bulk controls */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Bulk controls — mobile: stacked full-width, desktop: inline */}
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
         <Button
           onClick={startAllReady}
           disabled={stats.ready === 0}
-          className="bg-green-600 hover:bg-green-700 text-white h-10"
+          className="bg-green-600 hover:bg-green-700 text-white h-12 w-full sm:w-auto"
         >
-          <Play className="size-4" /> Start All Ready ({stats.ready})
+          <Play className="size-4" /> Start All ({stats.ready})
         </Button>
         <Button
           onClick={stopAllRunning}
           disabled={stats.running === 0}
           variant="destructive"
-          className="h-10"
+          className="h-12 w-full sm:w-auto"
         >
           <Square className="size-4" /> Stop All ({stats.running})
         </Button>
         <Button
           onClick={resetAll}
           variant="outline"
-          className="h-10"
+          className="h-12 w-full sm:w-auto"
           disabled={!dirty}
         >
-          <RotateCcw className="size-4" /> Reset Timers
+          <RotateCcw className="size-4" /> Reset
         </Button>
-        <div className="flex-1" />
+        <div className="hidden sm:flex-1" />
         <Button
           onClick={() => handleSaveSession()}
           disabled={saving || stats.finished === 0}
-          className="bg-aqua hover:bg-aqua/90 text-white h-10"
+          className="bg-aqua hover:bg-aqua/90 text-white h-12 w-full sm:w-auto col-span-2 sm:col-span-1"
         >
           <Save className="size-4" /> {saving ? "Saving…" : "Complete & Save"}
         </Button>

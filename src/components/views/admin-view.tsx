@@ -9,7 +9,9 @@ import {
   AlertTriangle,
   Ban,
   Database,
+  HeartHandshake,
   History,
+  Link2,
   Loader2,
   Plus,
   Shield,
@@ -25,7 +27,9 @@ import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type {
   AuditLogDTO,
+  ParentSwimmerDTO,
   Role,
+  SwimmerDTO,
   TrainingSessionDTO,
   UserDTO,
 } from "@/lib/types";
@@ -87,6 +91,7 @@ function RoleBadge({ role }: { role: Role }) {
     SUPER_ADMIN: "bg-aqua/15 text-aqua border-aqua/30",
     COACH: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300",
     VIEWER: "bg-muted text-muted-foreground border-border",
+    PARENT: "bg-pink-500/15 text-pink-700 border-pink-500/30 dark:text-pink-300",
   };
   return (
     <Badge variant="outline" className={cn("border", map[role])}>
@@ -797,6 +802,7 @@ function UserManagementCard() {
                   <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
                   <SelectItem value="COACH">Coach</SelectItem>
                   <SelectItem value="VIEWER">Viewer</SelectItem>
+                  <SelectItem value="PARENT">Parent</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -902,6 +908,275 @@ function UserManagementCard() {
 }
 
 // ============================================================
+// Parent Access Management
+// ============================================================
+function ParentAccessCard() {
+  const qc = useQueryClient();
+  const [parentUserId, setParentUserId] = useState<string>("");
+  const [swimmerId, setSwimmerId] = useState<string>("");
+  const [removeTarget, setRemoveTarget] = useState<ParentSwimmerDTO | null>(
+    null
+  );
+
+  // Current parent-swimmer mappings
+  const accessQ = useQuery<ParentSwimmerDTO[]>({
+    queryKey: ["admin", "parent-access"],
+    queryFn: () => api.get<ParentSwimmerDTO[]>("/api/admin/parent-access"),
+  });
+
+  // Reuse users list (already cached by UserManagementCard)
+  const usersQ = useQuery<UserDTO[]>({
+    queryKey: ["users"],
+    queryFn: () => api.get<UserDTO[]>("/api/users"),
+  });
+
+  // Active swimmers for the assign form
+  const swimmersQ = useQuery<SwimmerDTO[]>({
+    queryKey: ["swimmers", "list", "", "active"],
+    queryFn: () => api.get<SwimmerDTO[]>("/api/swimmers?active=true"),
+  });
+
+  const parentUsers = (usersQ.data ?? []).filter(
+    (u) => u.role === "PARENT" && u.isActive
+  );
+  const activeSwimmers = swimmersQ.data ?? [];
+
+  const assignMu = useMutation({
+    mutationFn: (body: { parentUserId: string; swimmerId: string }) =>
+      api.post<ParentSwimmerDTO>("/api/admin/parent-access", body),
+    onSuccess: () => {
+      toast.success("Parent access assigned.");
+      qc.invalidateQueries({ queryKey: ["admin", "parent-access"] });
+      qc.invalidateQueries({ queryKey: ["admin", "audit"] });
+      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
+      setParentUserId("");
+      setSwimmerId("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeMu = useMutation({
+    mutationFn: (id: string) => api.del(`/api/admin/parent-access/${id}`),
+    onSuccess: () => {
+      toast.success("Parent access removed.");
+      qc.invalidateQueries({ queryKey: ["admin", "parent-access"] });
+      qc.invalidateQueries({ queryKey: ["admin", "audit"] });
+      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
+      setRemoveTarget(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function submitAssign() {
+    if (!parentUserId) {
+      toast.error("Pick a parent user first.");
+      return;
+    }
+    if (!swimmerId) {
+      toast.error("Pick a swimmer first.");
+      return;
+    }
+    assignMu.mutate({ parentUserId, swimmerId });
+  }
+
+  return (
+    <Card className="bg-card">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <HeartHandshake className="size-4 text-aqua" />
+              Parent Access Management
+            </CardTitle>
+            <CardDescription>
+              Grant Parent-role users access to view a specific swimmer&apos;s
+              progress in the Parent Portal.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Assign form */}
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Link2 className="size-4 text-aqua" />
+            Assign New Access
+          </div>
+          {parentUsers.length === 0 ? (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+              No Parent-role users found. Create a Parent-role user first in
+              User Management above.
+            </div>
+          ) : activeSwimmers.length === 0 ? (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+              No active swimmers found. Add a swimmer first.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Parent User</Label>
+                <Select value={parentUserId} onValueChange={setParentUserId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select parent user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parentUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.fullName} ({u.username})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Swimmer</Label>
+                <Select value={swimmerId} onValueChange={setSwimmerId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select swimmer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeSwimmers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.swimmerName}
+                        {s.age !== null ? ` (${s.age}y)` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          {parentUsers.length > 0 && activeSwimmers.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                className="bg-aqua text-white hover:bg-aqua/90"
+                onClick={submitAssign}
+                disabled={assignMu.isPending}
+              >
+                {assignMu.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Plus className="size-4" />
+                )}
+                Assign
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Current mappings table */}
+        <div>
+          <div className="text-sm font-medium mb-2">Current Mappings</div>
+          {accessQ.isLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (accessQ.data ?? []).length === 0 ? (
+            <div className="text-sm text-muted-foreground text-center py-8 border rounded-md">
+              No parent-swimmer mappings yet.
+            </div>
+          ) : (
+            <div className="max-h-80 overflow-y-auto lp-scroll rounded-md border">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card z-10">
+                  <TableRow>
+                    <TableHead>Parent</TableHead>
+                    <TableHead>Swimmer</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(accessQ.data ?? []).map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium">
+                        {m.parentName ?? m.parentUserId}
+                      </TableCell>
+                      <TableCell>{m.swimmerName ?? m.swimmerId}</TableCell>
+                      <TableCell>
+                        {m.isActive ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300">
+                            Active
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-muted text-muted-foreground"
+                          >
+                            Inactive
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap">
+                        {new Date(m.createdAt).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-500/10"
+                          onClick={() => setRemoveTarget(m)}
+                        >
+                          <Trash2 className="size-3.5" /> Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      </CardContent>
+
+      {/* Remove confirm */}
+      <AlertDialog
+        open={!!removeTarget}
+        onOpenChange={(b) => {
+          if (!b) setRemoveTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Remove access for "{removeTarget?.parentName ?? "parent"}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revoke the parent&apos;s access to view{" "}
+              <span className="font-semibold">
+                {removeTarget?.swimmerName ?? "this swimmer"}
+              </span>{" "}
+              in the Parent Portal. The user account itself is not affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={removeMu.isPending || !removeTarget}
+              onClick={(e) => {
+                e.preventDefault();
+                if (removeTarget) removeMu.mutate(removeTarget.id);
+              }}
+            >
+              {removeMu.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              Remove Access
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+}
+
+// ============================================================
 // Main view
 // ============================================================
 export function AdminView() {
@@ -949,6 +1224,7 @@ export function AdminView() {
       <AuditCard />
       <DangerZoneCard />
       <UserManagementCard />
+      <ParentAccessCard />
 
       <div className="flex items-center justify-center gap-2 pt-4 text-[11px] text-muted-foreground">
         <Activity className="size-3 text-aqua" />
