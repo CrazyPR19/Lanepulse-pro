@@ -7,6 +7,7 @@ import {
   ForbiddenError,
   type AppSession,
 } from "@/lib/session";
+import { TenantContextError } from "@/lib/tenant-context";
 
 /** Standard JSON response */
 export function json<T>(data: T, status = 200) {
@@ -19,12 +20,13 @@ export function errorResponse(err: unknown) {
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
   }
   if (err instanceof ForbiddenError) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return NextResponse.json({ error: err.message }, { status: 403 });
   }
-  const msg =
-    err instanceof Error ? err.message : "Internal Server Error";
-  // Don't leak internal errors in production, but useful in dev
-  return NextResponse.json({ error: msg }, { status: 500 });
+  if (err instanceof TenantContextError) {
+    return NextResponse.json({ error: err.message }, { status: 403 });
+  }
+  console.error("API request failed", err instanceof Error ? err.message : "Unknown error");
+  return NextResponse.json({ error: "The request could not be completed." }, { status: 500 });
 }
 
 /** Write an audit log entry */
@@ -39,6 +41,7 @@ export async function audit(
     await db.auditLog.create({
       data: {
         userId: session.userId,
+        academyId: session.academyId,
         action,
         tableName,
         recordId: recordId ?? null,

@@ -2,7 +2,7 @@
 
 // LanePulse Pro - Settings (SUPER_ADMIN only)
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -15,6 +15,8 @@ import {
   Shield,
   Trash2,
   Waves,
+  Building2,
+  Save,
 } from "lucide-react";
 
 import { api } from "@/lib/api-client";
@@ -70,17 +72,81 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type AcademyProfile = {
+  academyName: string;
+  academyCode: string;
+  country: string | null;
+  city: string | null;
+  phone: string | null;
+  timezone: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  subscriptionPlan: string;
+  settings: { tagline: string | null; defaultLaneCount: number; poolLengthMeters: number } | null;
+};
+
+function AcademyProfileCard() {
+  const queryClient = useQueryClient();
+  const profile = useQuery<AcademyProfile>({ queryKey: ["academy", "settings"], queryFn: () => api.get("/api/academy/settings") });
+  const [form, setForm] = useState({ academyName: "", country: "", city: "", phone: "", timezone: "UTC", logoUrl: "", tagline: "", primaryColor: "#0f766e", secondaryColor: "#0369a1", defaultLaneCount: 8, poolLengthMeters: 25 });
+  useEffect(() => {
+    if (!profile.data) return;
+    setForm({
+      academyName: profile.data.academyName,
+      country: profile.data.country ?? "",
+      city: profile.data.city ?? "",
+      phone: profile.data.phone ?? "",
+      timezone: profile.data.timezone,
+      logoUrl: profile.data.logoUrl ?? "",
+      tagline: profile.data.settings?.tagline ?? "",
+      primaryColor: profile.data.primaryColor ?? "#0f766e",
+      secondaryColor: profile.data.secondaryColor ?? "#0369a1",
+      defaultLaneCount: profile.data.settings?.defaultLaneCount ?? 8,
+      poolLengthMeters: profile.data.settings?.poolLengthMeters ?? 25,
+    });
+  }, [profile.data]);
+  const save = useMutation({
+    mutationFn: () => api.patch<AcademyProfile>("/api/academy/settings", form),
+    onSuccess: () => { toast.success("Academy settings saved."); queryClient.invalidateQueries({ queryKey: ["academy", "settings"] }); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const textField = (key: keyof typeof form) => ({ value: String(form[key]), onChange: (event: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: event.target.value }) });
+  if (profile.isLoading) return <Skeleton className="h-72 w-full" />;
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="size-4 text-aqua" /> Academy Profile & Pool</CardTitle><CardDescription>{profile.data?.academyCode} · {profile.data?.subscriptionPlan} plan</CardDescription></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="space-y-1.5 sm:col-span-2"><Label>Academy Name</Label><Input {...textField("academyName")} /></div>
+          <div className="space-y-1.5"><Label>Country</Label><Input {...textField("country")} /></div>
+          <div className="space-y-1.5"><Label>City</Label><Input {...textField("city")} /></div>
+          <div className="space-y-1.5"><Label>Timezone</Label><Input {...textField("timezone")} /></div>
+          <div className="space-y-1.5"><Label>Phone</Label><Input {...textField("phone")} /></div>
+          <div className="space-y-1.5 sm:col-span-2"><Label>Logo URL</Label><Input {...textField("logoUrl")} /></div>
+          <div className="space-y-1.5 sm:col-span-2"><Label>Tagline</Label><Input {...textField("tagline")} /></div>
+          <div className="space-y-1.5"><Label>Lane Count</Label><Select value={String(form.defaultLaneCount)} onValueChange={(value) => setForm({ ...form, defaultLaneCount: Number(value) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[4,6,8,10,12].map((value) => <SelectItem key={value} value={String(value)}>{value} lanes</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-1.5"><Label>Pool Length</Label><Select value={String(form.poolLengthMeters)} onValueChange={(value) => setForm({ ...form, poolLengthMeters: Number(value) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="25">25 meters</SelectItem><SelectItem value="50">50 meters</SelectItem></SelectContent></Select></div>
+          <div className="space-y-1.5"><Label>Primary Color</Label><div className="flex gap-2"><Input type="color" className="w-12 p-1" {...textField("primaryColor")} /><Input {...textField("primaryColor")} /></div></div>
+          <div className="space-y-1.5"><Label>Secondary Color</Label><div className="flex gap-2"><Input type="color" className="w-12 p-1" {...textField("secondaryColor")} /><Input {...textField("secondaryColor")} /></div></div>
+        </div>
+        <Button onClick={() => save.mutate()} disabled={save.isPending} className="w-full sm:w-auto bg-aqua text-white hover:bg-aqua/90">{save.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save Academy Settings</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ============================================================
 // Database connection card (read-only diagnostic)
 // ============================================================
 function DatabaseCard() {
   const rows: { label: string; value: string }[] = [
-    { label: "Type", value: "SQLite (built-in)" },
+    { label: "Type", value: "PostgreSQL" },
     { label: "Status", value: "Connected" },
-    { label: "Host", value: "local" },
-    { label: "Port", value: "—" },
-    { label: "Database", value: "lanepulse_pro" },
-    { label: "User", value: "—" },
+    { label: "Host", value: "Configured by environment" },
+    { label: "Port", value: "5432 / provider default" },
+    { label: "Database", value: "Configured by DATABASE_URL" },
+    { label: "User", value: "Protected" },
     { label: "Password", value: "********" },
   ];
 
@@ -92,8 +158,7 @@ function DatabaseCard() {
           Database Connection
         </CardTitle>
         <CardDescription>
-          LanePulse Pro uses a built-in local database. No external setup
-          required.
+          Connection details are supplied by the deployment environment.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -115,8 +180,7 @@ function DatabaseCard() {
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-aqua/5 border border-aqua/20 rounded-md p-3 mb-3">
           <Info className="size-4 text-aqua shrink-0" />
           <span>
-            LanePulse Pro uses a built-in local database. No external setup
-            required.
+            Credentials are never returned to the browser.
           </span>
         </div>
         <Button
@@ -497,6 +561,7 @@ export function SettingsView() {
         </div>
       </div>
 
+      <AcademyProfileCard />
       <DatabaseCard />
       <StylesCard />
       <AppInfoCard />

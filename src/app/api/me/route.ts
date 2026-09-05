@@ -8,6 +8,7 @@ export async function GET() {
     const session = await requireUser();
     const user = await db.user.findUnique({
       where: { id: session.userId },
+      include: { academy: { select: { academyName: true } } },
     });
     if (!user) {
       return json({ error: "User not found" }, 404);

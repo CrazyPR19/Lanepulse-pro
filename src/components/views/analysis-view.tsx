@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardList,
+  CalendarDays,
   Crown,
   Gauge,
   Info,
@@ -178,7 +179,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="bg-card">
+    <Card className="bg-card min-w-0 overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Icon className="size-4 text-aqua" />
@@ -340,7 +341,7 @@ function ImprovementTab() {
         </SectionCard>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 min-[380px]:grid-cols-2 lg:grid-cols-4 gap-3">
             <Card className="bg-card">
               <CardContent className="pt-6">
                 <div className="text-xs text-muted-foreground">Previous Best</div>
@@ -395,7 +396,7 @@ function ImprovementTab() {
             {chartData.length === 0 ? (
               <EmptyState message="No trend data yet." />
             ) : (
-              <div className="h-72 w-full">
+              <div className="h-72 w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.85 0.02 220)" />
@@ -556,7 +557,8 @@ function CurrentVsPreviousTab() {
         ) : rows.length === 0 ? (
           <EmptyState message="No finished sessions match the current filters." />
         ) : (
-          <div className="max-h-[28rem] overflow-y-auto lp-scroll rounded-md border">
+          <>
+          <div className="hidden sm:block max-h-[28rem] overflow-y-auto lp-scroll rounded-md border">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -626,6 +628,20 @@ function CurrentVsPreviousTab() {
               </TableBody>
             </Table>
           </div>
+          <div className="sm:hidden space-y-2">
+            {rows.map((row) => (
+              <div key={row.swimmerId} className="rounded-md border p-3 min-w-0">
+                <div className="flex items-start justify-between gap-2"><span className="font-medium break-words min-w-0">{row.swimmerName}</span><StatusBadge status={row.direction} /></div>
+                <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
+                  <div><p className="text-xs text-muted-foreground">Latest</p><p className="font-mono font-semibold">{row.lastTimeSeconds !== null ? formatSeconds(row.lastTimeSeconds) : "—"}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Previous</p><p className="font-mono">{row.previousTimeSeconds !== null ? formatSeconds(row.previousTimeSeconds) : "—"}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Change</p><ChangeDelta seconds={row.changeSeconds} invert /></div>
+                  <div><p className="text-xs text-muted-foreground">Percent</p><p>{row.changePercent !== null ? `${row.changePercent > 0 ? "+" : ""}${row.changePercent.toFixed(1)}%` : "—"}</p></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </SectionCard>
     </div>
@@ -944,7 +960,8 @@ function GroupRankingTab() {
         ) : (data ?? []).length === 0 ? (
           <EmptyState message="No finished lanes in this session." />
         ) : (
-          <div className="max-h-[28rem] overflow-y-auto lp-scroll rounded-md border">
+          <>
+          <div className="hidden sm:block max-h-[28rem] overflow-y-auto lp-scroll rounded-md border">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -998,6 +1015,14 @@ function GroupRankingTab() {
               </TableBody>
             </Table>
           </div>
+          <div className="sm:hidden space-y-2">
+            {(data ?? []).map((row) => (
+              <div key={`${row.laneNo}-${row.swimmerId ?? "x"}`} className={cn("rounded-md border p-3", row.isBest && "border-aqua/40 bg-aqua/10")}>
+                <div className="flex items-center gap-3"><span className="inline-flex size-8 items-center justify-center rounded-full bg-aqua text-white font-bold">{row.rank}</span><div className="min-w-0 flex-1"><p className="font-medium truncate">{row.swimmerName ?? "—"}</p><p className="text-xs text-muted-foreground">Lane {row.laneNo}</p></div><div className="text-right"><p className="font-mono font-semibold">{row.elapsedSeconds !== null ? formatSeconds(row.elapsedSeconds) : "—"}</p><p className="text-xs text-muted-foreground">{row.gapFromFirst && row.gapFromFirst > 0 ? `+${row.gapFromFirst.toFixed(2)}s` : "Leader"}</p></div></div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </SectionCard>
     </div>
@@ -1549,9 +1574,81 @@ function RecommendationsTab() {
 // ============================================================
 // Main view
 // ============================================================
+type PracticeAnalysisData = {
+  plans: { id: string; planName: string; planDate: string; coachName: string; status: string; totalSets: number; completedSets: number; remainingSets: number; completionPercent: number; plannedMeters: number; completedMeters: number; plannedRepeats: number; completedRepeats: number; swimmerCount: number; copyCount: number }[];
+  comparisons: { swimmerId: string; swimmerName: string; styleName: string; distanceMeters: number; setLabel: string | null; currentSeconds: number; previousSeconds: number | null; changeSeconds: number | null; direction: string; recommendation: string }[];
+  setReports: { planId: string; planName: string; setId: string; setLabel: string; styleName: string; distanceMeters: number; repeatCount: number; targetTimeSeconds: number | null; actualAverageSeconds: number | null; bestActualSeconds: number | null; differenceFromTarget: number | null; swimmerResults: number; meetingTarget: number; targetAchievementPercent: number | null }[];
+  repeatReports: { planName: string; setLabel: string; swimmerId: string; swimmerName: string; repeats: { repeatNo: number; seconds: number }[]; fastest: number; slowest: number; average: number; dropOff: number; consistencyScore: number; recommendation: string }[];
+  dailyLoad: { date: string; plannedMeters: number; completedMeters: number; sets: number; repetitions: number; swimmers: number }[];
+  weeklyLoad: { week: string; plannedMeters: number; completedMeters: number }[];
+  distanceByStyle: { swimmingStyleName: string; meters: number }[];
+  groupLoad: { groupName: string; practiceRuns: number; swimmers: number; completedResults: number; totalResults: number; completionPercent: number }[];
+  averages: { restIntervalSeconds: number | null; targetTimeSeconds: number | null };
+  reuse: { id: string; planName: string; copyCount: number; completionPercent: number }[];
+  insights: string[];
+};
+
+function PracticeAnalysisTab() {
+  const query = useQuery<PracticeAnalysisData>({ queryKey: ["practice-analysis"], queryFn: () => api.get("/api/practice-analysis") });
+  const [loadView, setLoadView] = useState<"chart" | "table">("table");
+  if (query.isLoading) return <LoaderBlock />;
+  if (query.error) return <EmptyState message="Practice analysis is not available yet." />;
+  const data = query.data!;
+  return <div className="space-y-4 min-w-0 overflow-hidden">
+    <div className="grid grid-cols-1 min-[380px]:grid-cols-2 lg:grid-cols-4 gap-2">
+      <Metric label="Planned Meters" value={data.plans.reduce((sum, plan) => sum + plan.plannedMeters, 0).toLocaleString()} />
+      <Metric label="Completed Meters" value={data.plans.reduce((sum, plan) => sum + plan.completedMeters, 0).toLocaleString()} />
+      <Metric label="Planned Repeats" value={data.plans.reduce((sum, plan) => sum + plan.plannedRepeats, 0).toLocaleString()} />
+      <Metric label="Average Rest / Target" value={`${data.averages.restIntervalSeconds == null ? "—" : `${data.averages.restIntervalSeconds.toFixed(0)}s`} / ${data.averages.targetTimeSeconds == null ? "—" : formatSeconds(data.averages.targetTimeSeconds)}`} />
+    </div>
+    <div className="grid lg:grid-cols-2 gap-4">
+      <SectionCard title="Weekly Distance" description="Weekly planned and completed training load." icon={CalendarDays}>
+        <div className="h-72 sm:h-56 min-w-0"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.weeklyLoad} margin={{ top: 8, right: 4, left: -24, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="week" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="plannedMeters" fill={NAVY} /><Bar dataKey="completedMeters" fill={AQUA} /></BarChart></ResponsiveContainer></div>
+      </SectionCard>
+      <SectionCard title="Group Completion" description="Practice execution by participating group." icon={Users}>
+        <div className="space-y-2">{data.groupLoad.map((group) => <div key={group.groupName} className="border rounded-md p-2"><div className="flex justify-between gap-2"><span className="font-medium">{group.groupName}</span><Badge variant="secondary">{group.completionPercent}%</Badge></div><p className="text-xs text-muted-foreground">{group.practiceRuns} runs · {group.swimmers} swimmers · {group.completedResults}/{group.totalResults} results</p></div>)}</div>
+      </SectionCard>
+    </div>
+    <SectionCard title="Training Plan Completion" description="Completed planned sets from saved practice runs." icon={ClipboardList}>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">{data.plans.map((plan) => <div key={plan.id} className="border rounded-md p-3"><div className="flex justify-between gap-2"><span className="font-medium truncate">{plan.planName}</span><Badge variant="secondary">{plan.completionPercent}%</Badge></div><p className="text-xs text-muted-foreground">{new Date(plan.planDate).toLocaleDateString()} · {plan.coachName} · {plan.status}</p><div className="grid grid-cols-3 gap-1 text-xs mt-2"><span>{plan.completedSets}/{plan.totalSets} sets</span><span>{plan.completedMeters}/{plan.plannedMeters}m</span><span>{plan.completedRepeats}/{plan.plannedRepeats} reps</span></div><div className="h-2 bg-muted rounded mt-2 overflow-hidden"><div className="h-full bg-aqua" style={{ width: `${plan.completionPercent}%` }} /></div></div>)}</div>
+      {!data.plans.length && <EmptyState message="Create a training plan and complete a practice run to see progress." />}
+    </SectionCard>
+    <div className="grid lg:grid-cols-2 gap-4">
+      <SectionCard title="Daily Training Load" description="Planned and completed distance by day." icon={BarChart3}>
+        <div className="sm:hidden grid grid-cols-2 gap-1 mb-3 rounded-md bg-muted p-1"><Button size="sm" variant={loadView === "chart" ? "default" : "ghost"} className="h-11" onClick={() => setLoadView("chart")}>Chart View</Button><Button size="sm" variant={loadView === "table" ? "default" : "ghost"} className="h-11" onClick={() => setLoadView("table")}>Table View</Button></div>
+        <div className={cn("h-72 sm:h-64 min-w-0", loadView === "chart" ? "block" : "hidden sm:block")}><ResponsiveContainer width="100%" height="100%"><BarChart data={data.dailyLoad} margin={{ top: 8, right: 4, left: -24, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" tick={{ fontSize: 9 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="plannedMeters" fill={NAVY} name="Planned m" /><Bar dataKey="completedMeters" fill={AQUA} name="Completed m" /></BarChart></ResponsiveContainer></div>
+        <div className={cn("sm:hidden space-y-2", loadView === "table" ? "block" : "hidden")}>{data.dailyLoad.map((row) => <div key={row.date} className="rounded-md border p-3"><p className="font-medium">{row.date}</p><div className="grid grid-cols-2 gap-2 mt-2 text-sm"><span>Planned <strong>{row.plannedMeters.toLocaleString()}m</strong></span><span>Completed <strong>{row.completedMeters.toLocaleString()}m</strong></span><span>{row.sets} sets</span><span>{row.swimmers} swimmers</span></div></div>)}</div>
+      </SectionCard>
+      <SectionCard title="Distance by Style" description="Total planned meters for each swimming style." icon={Waves}>
+        <div className="h-72 sm:h-64 min-w-0"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.distanceByStyle} layout="vertical" margin={{ top: 8, right: 4, left: -8, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" tick={{ fontSize: 10 }} /><YAxis type="category" dataKey="swimmingStyleName" width={76} tick={{ fontSize: 9 }} tickFormatter={(value: string) => value.length > 11 ? `${value.slice(0, 10)}…` : value} /><Tooltip /><Bar dataKey="meters" fill={AQUA} /></BarChart></ResponsiveContainer></div>
+      </SectionCard>
+    </div>
+    <SectionCard title="Planned vs Actual Performance" description="Target comparisons use only matching style and distance; DNS/DQ are excluded." icon={Target}>
+      <div className="hidden sm:block overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Plan / Set</TableHead><TableHead>Target</TableHead><TableHead>Average</TableHead><TableHead>Best</TableHead><TableHead>Difference</TableHead><TableHead>Target Met</TableHead></TableRow></TableHeader><TableBody>{data.setReports.map((row) => <TableRow key={`${row.planId}-${row.setId}`}><TableCell><p className="font-medium">{row.setLabel}</p><p className="text-xs text-muted-foreground">{row.planName}</p></TableCell><TableCell>{row.targetTimeSeconds == null ? "—" : formatSeconds(row.targetTimeSeconds)}</TableCell><TableCell>{row.actualAverageSeconds == null ? "—" : formatSeconds(row.actualAverageSeconds)}</TableCell><TableCell>{row.bestActualSeconds == null ? "—" : formatSeconds(row.bestActualSeconds)}</TableCell><TableCell>{row.differenceFromTarget == null ? "—" : `${row.differenceFromTarget > 0 ? "+" : ""}${row.differenceFromTarget.toFixed(2)}s`}</TableCell><TableCell>{row.targetAchievementPercent == null ? "—" : `${row.meetingTarget}/${row.swimmerResults} (${row.targetAchievementPercent}%)`}</TableCell></TableRow>)}</TableBody></Table></div>
+      <div className="sm:hidden space-y-2">{data.setReports.map((row) => <div key={`${row.planId}-${row.setId}`} className="rounded-md border p-3"><p className="font-medium break-words">{row.setLabel}</p><p className="text-xs text-muted-foreground break-words">{row.planName} · {row.styleName} {row.distanceMeters}m</p><div className="grid grid-cols-2 gap-2 mt-3 text-sm"><span>Target <strong>{row.targetTimeSeconds == null ? "—" : formatSeconds(row.targetTimeSeconds)}</strong></span><span>Average <strong>{row.actualAverageSeconds == null ? "—" : formatSeconds(row.actualAverageSeconds)}</strong></span><span>Best <strong>{row.bestActualSeconds == null ? "—" : formatSeconds(row.bestActualSeconds)}</strong></span><span>Met <strong>{row.targetAchievementPercent == null ? "—" : `${row.targetAchievementPercent}%`}</strong></span></div></div>)}</div>
+    </SectionCard>
+    <SectionCard title="Repeat Performance Analysis" description="Pacing, drop-off, consistency, and positive next-step recommendations." icon={Gauge}>
+      <div className="grid lg:grid-cols-2 gap-2">{data.repeatReports.slice(0, 40).map((row) => <div key={`${row.planName}-${row.setLabel}-${row.swimmerId}`} className="border rounded-md p-3"><div className="flex justify-between gap-2"><div><p className="font-medium">{row.swimmerName}</p><p className="text-xs text-muted-foreground">{row.setLabel} · {row.planName}</p></div><Badge variant="secondary">{row.consistencyScore}% consistent</Badge></div><div className="flex flex-wrap gap-1 mt-2">{row.repeats.map((repeat) => <span key={repeat.repeatNo} className="bg-muted rounded px-2 py-1 text-xs font-mono">R{repeat.repeatNo}: {formatSeconds(repeat.seconds)}</span>)}</div><p className="text-xs mt-2">Fastest {formatSeconds(row.fastest)} · Slowest {formatSeconds(row.slowest)} · Drop-off {row.dropOff.toFixed(2)}s</p><p className="text-sm mt-2 text-muted-foreground">{row.recommendation}</p></div>)}</div>
+      {!data.repeatReports.length && <EmptyState message="Complete repeated plan sets to see pacing and consistency." />}
+    </SectionCard>
+    <div className="grid lg:grid-cols-2 gap-4">
+      <SectionCard title="Plan Reuse" description="Most copied plans and their completion performance." icon={ClipboardList}><div className="space-y-2">{data.reuse.map((plan) => <div key={plan.id} className="flex justify-between gap-2 border rounded-md p-2"><span className="font-medium truncate">{plan.planName}</span><span className="text-xs shrink-0">{plan.copyCount} copies · {plan.completionPercent}% complete</span></div>)}</div></SectionCard>
+      <SectionCard title="Coach Insights" description="Practical observations from recent plan and timing data." icon={Lightbulb}><ul className="space-y-2">{data.insights.map((insight) => <li key={insight} className="border-l-2 border-aqua pl-3 text-sm">{insight}</li>)}</ul></SectionCard>
+    </div>
+    <SectionCard title="Practice Set Progress" description="Same swimmer, style, distance, and plan-set context." icon={TrendingUp}>
+      <div className="space-y-2">{data.comparisons.slice(0, 30).map((row) => <div key={`${row.swimmerId}-${row.styleName}-${row.distanceMeters}-${row.setLabel}`} className="border rounded-md p-3 grid sm:grid-cols-[1fr_auto] gap-2"><div><div className="flex flex-wrap gap-2 items-center"><span className="font-medium">{row.swimmerName}</span><StatusBadge status={row.direction} /></div><p className="text-xs text-muted-foreground">{row.setLabel ?? `${row.distanceMeters}m ${row.styleName}`}</p><p className="text-sm mt-1">{row.recommendation}</p></div><div className="text-sm sm:text-right"><p>Current: <strong>{formatSeconds(row.currentSeconds)}</strong></p><p className="text-muted-foreground">Previous: {row.previousSeconds == null ? "—" : formatSeconds(row.previousSeconds)}</p></div></div>)}</div>
+      {!data.comparisons.length && <EmptyState message="Complete two matching practice sets to compare swimmer progress." />}
+    </SectionCard>
+  </div>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <Card><CardContent className="p-3"><p className="text-[10px] uppercase text-muted-foreground">{label}</p><p className="text-xl font-bold mt-1">{value}</p></CardContent></Card>;
+}
+
 export function AnalysisView() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0 overflow-hidden">
       <div className="flex items-center gap-3">
         <div className="rounded-lg bg-aqua/15 p-2">
           <BarChart3 className="size-5 text-aqua" />
@@ -1585,6 +1682,9 @@ export function AnalysisView() {
             <TabsTrigger value="recommendations">
               <Lightbulb className="size-3.5" /> Recommendations
             </TabsTrigger>
+            <TabsTrigger value="practice">
+              <ClipboardList className="size-3.5" /> Practice Plans
+            </TabsTrigger>
           </TabsList>
         </ScrollArea>
 
@@ -1605,6 +1705,9 @@ export function AnalysisView() {
         </TabsContent>
         <TabsContent value="recommendations">
           <RecommendationsTab />
+        </TabsContent>
+        <TabsContent value="practice">
+          <PracticeAnalysisTab />
         </TabsContent>
       </Tabs>
 

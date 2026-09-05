@@ -25,9 +25,9 @@ function toDTO(m: {
   return {
     id: m.id,
     parentUserId: m.parentUserId,
-    parentName: m.parent?.fullName ?? null,
+    parentName: m.parent?.fullName,
     swimmerId: m.swimmerId,
-    swimmerName: m.swimmer?.swimmerName ?? null,
+    swimmerName: m.swimmer?.swimmerName,
     isActive: m.isActive,
     createdAt: m.createdAt.toISOString(),
   };
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       });
     } else {
       mapping = await db.parentSwimmer.create({
-        data: { parentUserId, swimmerId, isActive: true },
+        data: { parentUserId, swimmerId, isActive: true, academyId: session.academyId },
         include: {
           parent: { select: { fullName: true } },
           swimmer: { select: { swimmerName: true } },

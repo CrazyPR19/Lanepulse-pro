@@ -11,7 +11,7 @@ import { hashPassword } from "@/lib/helpers";
 import type { Role } from "@/lib/types";
 import { NextRequest } from "next/server";
 
-const VALID_ROLES: Role[] = ["SUPER_ADMIN", "COACH", "VIEWER", "PARENT"];
+const VALID_ROLES: Role[] = ["ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH", "VIEWER", "PARENT"];
 
 export async function PATCH(
   req: NextRequest,
@@ -31,9 +31,15 @@ export async function PATCH(
 
     const existing = await db.user.findUnique({ where: { id } });
     if (!existing) return json({ error: "User not found" }, 404);
+    if (session.academyRole === "ACADEMY_ADMIN" && (["ACADEMY_OWNER", "SUPER_ADMIN", "ACADEMY_ADMIN"].includes(existing.role) || body.role === "ACADEMY_ADMIN")) {
+      return json({ error: "Academy Admins cannot modify owner or admin accounts." }, 403);
+    }
 
     if (body.role && !VALID_ROLES.includes(body.role as Role)) {
       return json({ error: "Invalid role" }, 400);
+    }
+    if (body.role === "ACADEMY_OWNER" && existing.role !== "ACADEMY_OWNER") {
+      return json({ error: "Academy ownership transfer requires a dedicated support workflow." }, 403);
     }
 
     const data: any = {};
@@ -66,18 +72,18 @@ export async function PATCH(
       data.passwordHash = await hashPassword(body.password);
     }
 
-    // Prevent demoting the last super admin
+    // Every academy must retain an active owner.
     if (
-      existing.role === "SUPER_ADMIN" &&
-      (body.role !== undefined && body.role !== "SUPER_ADMIN" ||
+      ["SUPER_ADMIN", "ACADEMY_OWNER"].includes(existing.role) &&
+      (body.role !== undefined && !["SUPER_ADMIN", "ACADEMY_OWNER"].includes(body.role) ||
         body.isActive === false)
     ) {
-      const superAdminCount = await db.user.count({
-        where: { role: "SUPER_ADMIN", isActive: true },
+      const ownerCount = await db.user.count({
+        where: { role: { in: ["SUPER_ADMIN", "ACADEMY_OWNER"] }, isActive: true },
       });
-      if (superAdminCount <= 1) {
+      if (ownerCount <= 1) {
         return json(
-          { error: "Cannot demote or deactivate the last super admin" },
+          { error: "Cannot demote or deactivate the last academy owner" },
           409
         );
       }
@@ -108,6 +114,9 @@ export async function DELETE(
 
     const existing = await db.user.findUnique({ where: { id } });
     if (!existing) return json({ error: "User not found" }, 404);
+    if (session.academyRole === "ACADEMY_ADMIN" && ["ACADEMY_OWNER", "SUPER_ADMIN", "ACADEMY_ADMIN"].includes(existing.role)) {
+      return json({ error: "Academy Admins cannot delete owner or admin accounts." }, 403);
+    }
 
     // Cannot delete self
     if (session.userId === id) {
@@ -115,13 +124,13 @@ export async function DELETE(
     }
 
     // Cannot delete the last super admin
-    if (existing.role === "SUPER_ADMIN") {
+    if (["SUPER_ADMIN", "ACADEMY_OWNER"].includes(existing.role)) {
       const superAdminCount = await db.user.count({
-        where: { role: "SUPER_ADMIN", isActive: true },
+        where: { role: { in: ["SUPER_ADMIN", "ACADEMY_OWNER"] }, isActive: true },
       });
       if (superAdminCount <= 1) {
         return json(
-          { error: "Cannot delete the last super admin" },
+          { error: "Cannot delete the last academy owner" },
           409
         );
       }

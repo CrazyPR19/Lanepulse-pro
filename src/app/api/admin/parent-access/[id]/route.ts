@@ -15,7 +15,9 @@ export async function DELETE(
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const { id } = await params;
-    const body = await parseBody<{ permanent?: boolean }>(req).catch(() => ({}));
+    const body = await parseBody<{ permanent?: boolean }>(req).catch(
+      (): { permanent?: boolean } => ({})
+    );
 
     const existing = await db.parentSwimmer.findUnique({
       where: { id },

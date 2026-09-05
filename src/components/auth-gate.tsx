@@ -21,12 +21,18 @@ import { AnalysisView } from "@/components/views/analysis-view";
 import { AdminView } from "@/components/views/admin-view";
 import { SettingsView } from "@/components/views/settings-view";
 import { ParentDashboardView } from "@/components/views/parent-dashboard-view";
+import { TrainingPlanView } from "@/components/views/training-plan-view";
+import { PracticeConsoleView } from "@/components/views/practice-console-view";
+import { PlatformAdminView } from "@/components/views/platform-admin-view";
+import { AcademyOnboarding } from "@/components/academy-onboarding";
+import { useQuery } from "@tanstack/react-query";
 
 type Phase = "loading" | "setup" | "login" | "app";
 
 export function AuthGate() {
   const { data: session, status } = useSession();
   const { user, setUser, view, hasSetup, setHasSetup, setView } = useAppStore();
+  const academySettings = useQuery<any>({ queryKey: ["academy", "settings"], queryFn: () => api.get("/api/academy/settings"), enabled: !!user?.academyId && user.role === "ACADEMY_OWNER" });
 
   // Check setup status on first mount (side-effect only — no setState-in-effect
   // rule violation because setHasSetup is called inside an async callback, not
@@ -69,7 +75,9 @@ export function AuthGate() {
 
   // When user loads, if their role can't access the current view, switch to their default.
   useEffect(() => {
-    if (user && !canAccess(view, user.role)) {
+    if (user?.platformRole === "PLATFORM_SUPER_ADMIN" && view !== "platform") {
+      setView("platform");
+    } else if (user && user.platformRole !== "PLATFORM_SUPER_ADMIN" && !canAccess(view, user.role)) {
       setView(defaultViewForRole(user.role));
     }
   }, [user, view, setView]);
@@ -97,10 +105,16 @@ export function AuthGate() {
     );
   }
 
+  if (user.role === "ACADEMY_OWNER" && academySettings.data && !academySettings.data.settings?.onboardingCompleted) {
+    return <AcademyOnboarding academy={academySettings.data} />;
+  }
+
   return (
     <AppShell>
       {view === "dashboard" && <DashboardView />}
       {view === "timer" && <TimerView />}
+      {view === "training-plan" && <TrainingPlanView />}
+      {view === "practice" && <PracticeConsoleView />}
       {view === "swimmers" && <SwimmersView />}
       {view === "groups" && <GroupsView />}
       {view === "history" && <HistoryView />}
@@ -108,6 +122,7 @@ export function AuthGate() {
       {view === "admin" && <AdminView />}
       {view === "settings" && <SettingsView />}
       {view === "parent" && <ParentDashboardView />}
+      {view === "platform" && <PlatformAdminView />}
     </AppShell>
   );
 }

@@ -663,6 +663,8 @@ export function HistoryView() {
         </CardContent>
       </Card>
 
+      <PracticeRunHistory />
+
       {/* ---- Detail Dialog ---- */}
       <Dialog
         open={!!detailId}
@@ -935,6 +937,21 @@ export function HistoryView() {
 // ============================================================
 // SUB-COMPONENTS
 // ============================================================
+type PracticeHistoryRun = {
+  id: string; sessionDate: string; status: string; distanceMeters: number;
+  planNameSnapshot: string | null; setLabelSnapshot: string | null; styleNameSnapshot: string | null;
+  style: { styleName: string }; trainingPlan?: { planName: string } | null;
+  trainingPlanSet?: { setLabel: string } | null;
+  groups: { id: string; groupNameSnapshot: string; actualStartTime: string | null; completedRepeatCount: number; totalRepeats: number; results: { id: string; repeatNo: number; swimmerNameSnapshot: string; laneNo: number; elapsedSeconds: number | null; resultText: string | null; laps: unknown[] }[] }[];
+};
+
+function PracticeRunHistory() {
+  const query = useQuery<PracticeHistoryRun[]>({ queryKey: ["practice-runs", "history"], queryFn: () => api.get("/api/practice-runs?limit=20") });
+  return <Card><CardContent className="p-3 sm:p-4"><div className="flex items-center gap-2 mb-3"><Clock className="size-4 text-aqua" /><h2 className="font-semibold">Multi-Group Practice History</h2></div>
+    {query.isLoading ? <div className="text-sm text-muted-foreground">Loading practice runs...</div> : !query.data?.length ? <div className="text-sm text-muted-foreground">No saved practice runs yet.</div> : <div className="space-y-2">{query.data.map((run) => <details key={run.id} className="border rounded-md p-3"><summary className="cursor-pointer list-none flex flex-wrap items-center gap-2"><span className="font-medium">{run.planNameSnapshot ?? run.trainingPlan?.planName ?? "Practice Run"}</span><Badge>{run.status}</Badge><span className="text-xs text-muted-foreground">{new Date(run.sessionDate).toLocaleString()} · {run.setLabelSnapshot ?? run.trainingPlanSet?.setLabel ?? `${run.distanceMeters}m ${run.styleNameSnapshot ?? run.style.styleName}`} · {run.groups.length} groups</span></summary><div className="grid sm:grid-cols-2 gap-2 mt-3">{run.groups.map((group) => <div key={group.id} className="bg-muted/30 rounded-md p-2"><p className="font-medium text-sm">{group.groupNameSnapshot} · {group.completedRepeatCount}/{group.totalRepeats} repeats</p>{group.results.map((result) => <div key={result.id} className="flex justify-between gap-2 text-xs py-1 border-b last:border-0"><span className="truncate">R{result.repeatNo} · L{result.laneNo} · {result.swimmerNameSnapshot}</span><span className="font-mono shrink-0">{result.resultText ?? "—"} {result.laps.length ? `· ${result.laps.length} laps` : ""}</span></div>)}</div>)}</div></details>)}</div>}
+  </CardContent></Card>;
+}
+
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md bg-muted/40 p-2">

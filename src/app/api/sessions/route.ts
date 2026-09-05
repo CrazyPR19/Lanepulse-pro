@@ -113,6 +113,8 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<CreateBody>(req);
+    const academySettings = await db.academySettings.findUnique({ where: { academyId: session.academyId } });
+    const academyLaneCount = academySettings?.defaultLaneCount ?? 8;
     const fieldErr = requireFields(body as any, [
       "sessionName",
       "styleId",
@@ -135,8 +137,8 @@ export async function POST(req: NextRequest) {
     const lanes = body.lanes ?? [];
     const seenLaneNos = new Set<number>();
     for (const lane of lanes) {
-      if (!Number.isInteger(lane.laneNo) || lane.laneNo < 1 || lane.laneNo > 12) {
-        return json({ error: `Invalid laneNo: ${lane.laneNo} (must be 1..12)` }, 400);
+      if (!Number.isInteger(lane.laneNo) || lane.laneNo < 1 || lane.laneNo > academyLaneCount) {
+        return json({ error: `Invalid laneNo: ${lane.laneNo} (must be 1..${academyLaneCount})` }, 400);
       }
       if (seenLaneNos.has(lane.laneNo)) {
         return json({ error: `Duplicate laneNo: ${lane.laneNo}` }, 400);
@@ -165,6 +167,7 @@ export async function POST(req: NextRequest) {
           status,
           remarks: body.remarks ?? null,
           createdByUserId: session.userId,
+          academyId: session.academyId,
         },
         include: {
           style: true,
@@ -195,6 +198,7 @@ export async function POST(req: NextRequest) {
             elapsedSeconds: elapsed,
             resultText,
             status: laneStatus,
+            academyId: session.academyId,
           },
         });
 
@@ -212,6 +216,7 @@ export async function POST(req: NextRequest) {
                 lapTimeSeconds,
                 lapTimeText: lap.lapTimeText ?? formatSeconds(lapTimeSeconds),
                 cumulativeSeconds: Number(lap.cumulativeSeconds),
+                academyId: session.academyId,
               },
             });
           }

@@ -10,6 +10,70 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Academy {
+  id               String   @id @default(cuid())
+  academyName      String
+  academyCode      String   @unique
+  slug             String   @unique
+  email            String?
+  phone            String?
+  country          String?
+  city             String?
+  address          String?
+  timezone         String   @default("UTC")
+  logoUrl          String?
+  primaryColor     String?  @default("#0f766e")
+  secondaryColor   String?  @default("#0369a1")
+  isActive         Boolean  @default(true)
+  subscriptionPlan String   @default("FREE")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  settings             AcademySettings?
+  users                User[]
+  swimmers             Swimmer[]
+  swimmingStyles       SwimmingStyle[]
+  trainingGroups       TrainingGroup[]
+  groupMembers         GroupMember[]
+  trainingPlans        TrainingPlan[]
+  trainingSessions     TrainingSession[]
+  sessionLanes         SessionLane[]
+  sessionLaps          SessionLap[]
+  practiceRuns         PracticeRun[]
+  practiceRunGroups    PracticeRunGroup[]
+  practiceGroupRepeats PracticeRunGroupRepeat[]
+  practiceRunResults   PracticeRunResult[]
+  practiceRunLaps      PracticeRunLap[]
+  performanceNotes     PerformanceNote[]
+  auditLogs            AuditLog[]
+  parentSwimmers       ParentSwimmer[]
+
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model AcademySettings {
+  id                       String   @id @default(cuid())
+  academyId                String   @unique
+  tagline                  String?
+  defaultLaneCount         Int      @default(8)
+  poolLengthMeters         Int      @default(25)
+  timezone                 String   @default("UTC")
+  dateFormat               String   @default("dd/MM/yyyy")
+  preferredUnits           String   @default("METRIC")
+  maximumSwimmers          Int?
+  maximumCoaches           Int?
+  parentPortalEnabled      Boolean  @default(true)
+  advancedAnalyticsEnabled Boolean  @default(true)
+  dataExportEnabled        Boolean  @default(true)
+  onboardingStep           Int      @default(1)
+  onboardingCompleted      Boolean  @default(false)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  academy Academy @relation(fields: [academyId], references: [id], onDelete: Cascade)
+}
+
 // ============================================================
 // USERS & AUTH
 // ============================================================
@@ -21,14 +85,23 @@ model User {
   username     String    @unique
   passwordHash String
   role         String    @default("VIEWER") // SUPER_ADMIN | COACH | VIEWER
+  platformRole String?
+  academyId    String?
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   lastLoginAt  DateTime?
 
-  sessions       TrainingSession[]
-  auditLogs      AuditLog[]
+  sessions         TrainingSession[]
+  auditLogs        AuditLog[]
   performanceNotes PerformanceNote[]
-  parentSwimmers ParentSwimmer[]
+  parentSwimmers   ParentSwimmer[]
+  trainingPlans    TrainingPlan[]    @relation("TrainingPlanCreatedBy")
+  deletedPlans     TrainingPlan[]    @relation("TrainingPlanDeletedBy")
+  practiceRuns     PracticeRun[]
+  academy          Academy?          @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@index([academyId])
+  @@index([academyId, role])
 }
 
 // ============================================================
@@ -36,21 +109,28 @@ model User {
 // ============================================================
 
 model Swimmer {
-  id            String    @id @default(cuid())
-  swimmerName   String
-  age           Int?
-  gender        String?   // MALE | FEMALE | OTHER
-  dateOfBirth   DateTime?
-  activeStatus  Boolean   @default(true)
-  remarks       String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  swimmerName  String
+  age          Int?
+  gender       String? // MALE | FEMALE | OTHER
+  dateOfBirth  DateTime?
+  activeStatus Boolean   @default(true)
+  remarks      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  academyId    String
 
-  groupMembers  GroupMember[]
-  sessionLanes  SessionLane[]
-  sessionLaps   SessionLap[]
-  performanceNotes PerformanceNote[]
-  parentSwimmers ParentSwimmer[]
+  groupMembers       GroupMember[]
+  sessionLanes       SessionLane[]
+  sessionLaps        SessionLap[]
+  performanceNotes   PerformanceNote[]
+  parentSwimmers     ParentSwimmer[]
+  practiceRunResults PracticeRunResult[]
+  academy            Academy             @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@index([academyId])
+  @@index([academyId, swimmerName])
+  @@index([academyId, createdAt])
 }
 
 // ============================================================
@@ -59,12 +139,19 @@ model Swimmer {
 
 model SwimmingStyle {
   id        String  @id @default(cuid())
-  styleName String  @unique
+  styleName String
+  academyId String
   isActive  Boolean @default(true)
   sortOrder Int     @default(0)
 
-  sessions       TrainingSession[]
+  sessions         TrainingSession[]
   performanceNotes PerformanceNote[]
+  trainingPlanSets TrainingPlanSet[]
+  practiceRuns     PracticeRun[]
+  academy          Academy           @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@unique([academyId, styleName])
+  @@index([academyId])
 }
 
 // ============================================================
@@ -79,26 +166,36 @@ model TrainingGroup {
   remarks    String?
   isActive   Boolean   @default(true)
   createdAt  DateTime  @default(now())
+  academyId  String
 
-  members   GroupMember[]
-  sessions  TrainingSession[]
+  members           GroupMember[]
+  sessions          TrainingSession[]
+  practiceRunGroups PracticeRunGroup[]
+  academy           Academy            @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@unique([academyId, groupName])
+  @@index([academyId])
+  @@index([academyId, createdAt])
 }
 
 model GroupMember {
-  id         String   @id @default(cuid())
-  groupId    String
-  swimmerId  String
-  laneNo     Int      // 1 to 12
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  groupId   String
+  swimmerId String
+  laneNo    Int // 1 to 12
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  academyId String
 
-  group     TrainingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  swimmer   Swimmer       @relation(fields: [swimmerId], references: [id], onDelete: Cascade)
+  group   TrainingGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  swimmer Swimmer       @relation(fields: [swimmerId], references: [id], onDelete: Cascade)
+  academy Academy       @relation(fields: [academyId], references: [id], onDelete: Restrict)
 
   @@unique([groupId, laneNo, isActive])
   @@index([groupId])
   @@index([swimmerId])
+  @@index([academyId])
 }
 
 // ============================================================
@@ -106,71 +203,81 @@ model GroupMember {
 // ============================================================
 
 model TrainingSession {
-  id              String    @id @default(cuid())
-  sessionName     String
-  sessionDate     DateTime  @default(now())
+  id               String    @id @default(cuid())
+  sessionName      String
+  sessionDate      DateTime  @default(now())
   sessionStartTime DateTime?
-  sessionEndTime  DateTime?
-  styleId         String
-  distanceMeters  Int
-  groupId         String?
-  status          String    @default("DRAFT") // DRAFT | RUNNING | COMPLETED | ABORTED
-  remarks         String?
-  createdByUserId String
-  createdAt       DateTime  @default(now())
+  sessionEndTime   DateTime?
+  styleId          String
+  distanceMeters   Int
+  groupId          String?
+  status           String    @default("DRAFT") // DRAFT | RUNNING | COMPLETED | ABORTED
+  remarks          String?
+  createdByUserId  String
+  createdAt        DateTime  @default(now())
+  academyId        String
 
-  style    SwimmingStyle  @relation(fields: [styleId], references: [id])
-  group    TrainingGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  user     User           @relation(fields: [createdByUserId], references: [id])
-  lanes    SessionLane[]
-  laps     SessionLap[]
-  notes    PerformanceNote[]
+  style SwimmingStyle     @relation(fields: [styleId], references: [id])
+  group TrainingGroup?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  user  User              @relation(fields: [createdByUserId], references: [id])
+  lanes SessionLane[]
+  laps  SessionLap[]
+  notes PerformanceNote[]
+  academy Academy           @relation(fields: [academyId], references: [id], onDelete: Restrict)
 
   @@index([groupId])
   @@index([styleId])
   @@index([sessionDate])
+  @@index([academyId])
+  @@index([academyId, sessionDate])
 }
 
 model SessionLane {
-  id              String    @id @default(cuid())
-  sessionId       String
-  laneNo          Int       // 1 to 12
-  swimmerId       String?
-  groupId         String?
-  startTime       DateTime?
-  stopTime        DateTime?
-  elapsedSeconds  Float?
-  resultText      String?
-  status          String    @default("IDLE") // IDLE | READY | RUNNING | FINISHED | DNF
-  createdAt       DateTime  @default(now())
+  id             String    @id @default(cuid())
+  sessionId      String
+  laneNo         Int // 1 to 12
+  swimmerId      String?
+  groupId        String?
+  startTime      DateTime?
+  stopTime       DateTime?
+  elapsedSeconds Float?
+  resultText     String?
+  status         String    @default("IDLE") // IDLE | READY | RUNNING | FINISHED | DNF
+  createdAt      DateTime  @default(now())
+  academyId      String
 
-  session  TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  swimmer  Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
-  laps     SessionLap[]
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  swimmer Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+  laps    SessionLap[]
+  academy Academy         @relation(fields: [academyId], references: [id], onDelete: Restrict)
 
   @@unique([sessionId, laneNo])
   @@index([sessionId])
+  @@index([academyId])
 }
 
 model SessionLap {
-  id              String    @id @default(cuid())
-  sessionId       String
-  sessionLaneId   String
-  laneNo          Int
-  swimmerId       String?
-  lapNo           Int
-  lapTimeSeconds  Float
-  lapTimeText     String
+  id                String   @id @default(cuid())
+  sessionId         String
+  sessionLaneId     String
+  laneNo            Int
+  swimmerId         String?
+  lapNo             Int
+  lapTimeSeconds    Float
+  lapTimeText       String
   cumulativeSeconds Float
-  createdAt       DateTime  @default(now())
+  createdAt         DateTime @default(now())
+  academyId         String
 
-  session   TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  lane      SessionLane     @relation(fields: [sessionLaneId], references: [id], onDelete: Cascade)
-  swimmer   Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lane    SessionLane     @relation(fields: [sessionLaneId], references: [id], onDelete: Cascade)
+  swimmer Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+  academy Academy         @relation(fields: [academyId], references: [id], onDelete: Restrict)
 
   @@unique([sessionLaneId, lapNo])
   @@index([sessionId])
   @@index([sessionLaneId])
+  @@index([academyId])
 }
 
 // ============================================================
@@ -178,22 +285,26 @@ model SessionLap {
 // ============================================================
 
 model PerformanceNote {
-  id                String   @id @default(cuid())
-  swimmerId         String?
-  sessionId         String?
-  styleId           String?
-  distanceMeters    Int?
+  id                 String   @id @default(cuid())
+  swimmerId          String?
+  sessionId          String?
+  styleId            String?
+  distanceMeters     Int?
   recommendationText String
-  createdAt         DateTime @default(now())
+  createdAt          DateTime @default(now())
+  academyId          String
 
-  swimmer  Swimmer?        @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
-  session  TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  style    SwimmingStyle?  @relation(fields: [styleId], references: [id], onDelete: SetNull)
-  user     User?           @relation(fields: [createdByUserId], references: [id])
+  swimmer         Swimmer?         @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+  session         TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  style           SwimmingStyle?   @relation(fields: [styleId], references: [id], onDelete: SetNull)
+  user            User?            @relation(fields: [createdByUserId], references: [id])
   createdByUserId String?
+  academy         Academy          @relation(fields: [academyId], references: [id], onDelete: Restrict)
 
   @@index([swimmerId])
   @@index([sessionId])
+  @@index([academyId])
+  @@index([academyId, createdAt])
 }
 
 // ============================================================
@@ -201,19 +312,23 @@ model PerformanceNote {
 // ============================================================
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String?
-  action     String
-  tableName  String
-  recordId   String?
-  details    String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  tableName String
+  recordId  String?
+  details   String?
+  createdAt DateTime @default(now())
+  academyId String?
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([tableName])
   @@index([createdAt])
+  @@index([academyId])
+  @@index([academyId, createdAt])
 }
 
 // ============================================================
@@ -232,16 +347,224 @@ model AppConfig {
 // ============================================================
 
 model ParentSwimmer {
-  id            String   @id @default(cuid())
-  parentUserId  String
-  swimmerId     String
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  parentUserId String
+  swimmerId    String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  academyId    String
 
-  parent  User     @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
-  swimmer Swimmer  @relation(fields: [swimmerId], references: [id], onDelete: Cascade)
+  parent  User    @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
+  swimmer Swimmer @relation(fields: [swimmerId], references: [id], onDelete: Cascade)
+  academy Academy @relation(fields: [academyId], references: [id], onDelete: Restrict)
 
   @@unique([parentUserId, swimmerId])
   @@index([parentUserId])
   @@index([swimmerId])
+  @@index([academyId])
+}
+
+// ============================================================
+// DAILY TRAINING PLANS
+// ============================================================
+
+model TrainingPlan {
+  id               String    @id @default(cuid())
+  planDate         DateTime  @default(now())
+  planName         String
+  createdByUserId  String
+  remarks          String?
+  status           String    @default("DRAFT")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  copiedFromPlanId String?
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  deletedByUserId  String?
+  academyId        String
+
+  createdBy  User              @relation("TrainingPlanCreatedBy", fields: [createdByUserId], references: [id])
+  deletedBy  User?             @relation("TrainingPlanDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+  copiedFrom TrainingPlan?     @relation("TrainingPlanCopies", fields: [copiedFromPlanId], references: [id], onDelete: SetNull)
+  copies     TrainingPlan[]    @relation("TrainingPlanCopies")
+  sets       TrainingPlanSet[]
+  runs       PracticeRun[]
+  academy    Academy           @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@index([planDate])
+  @@index([createdByUserId])
+  @@index([status])
+  @@index([copiedFromPlanId])
+  @@index([isActive])
+  @@index([deletedByUserId])
+  @@index([academyId])
+  @@index([academyId, planDate])
+}
+
+model TrainingPlanSet {
+  id                  String  @id @default(cuid())
+  planId              String
+  sequenceNo          Int
+  distanceMeters      Int
+  repeatCount         Int
+  swimmingStyleId     String
+  setLabel            String
+  targetTimeSeconds   Float?
+  restIntervalSeconds Int?
+  notes               String?
+  isActive            Boolean @default(true)
+
+  plan  TrainingPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  style SwimmingStyle @relation(fields: [swimmingStyleId], references: [id])
+  runs  PracticeRun[]
+
+  @@unique([planId, sequenceNo])
+  @@index([planId])
+  @@index([swimmingStyleId])
+}
+
+// ============================================================
+// MULTI-GROUP PRACTICE RUNS
+// ============================================================
+
+model PracticeRun {
+  id                          String   @id @default(cuid())
+  trainingPlanId              String?
+  trainingPlanSetId           String?
+  sessionDate                 DateTime @default(now())
+  styleId                     String
+  distanceMeters              Int
+  repeatNo                    Int?
+  status                      String   @default("DRAFT")
+  createdByUserId             String
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  planNameSnapshot            String?
+  setLabelSnapshot            String?
+  styleNameSnapshot           String?
+  repeatCountSnapshot         Int?
+  targetTimeSecondsSnapshot   Float?
+  restIntervalSecondsSnapshot Int?
+  academyId                   String
+
+  trainingPlan    TrainingPlan?       @relation(fields: [trainingPlanId], references: [id], onDelete: SetNull)
+  trainingPlanSet TrainingPlanSet?    @relation(fields: [trainingPlanSetId], references: [id], onDelete: SetNull)
+  style           SwimmingStyle       @relation(fields: [styleId], references: [id])
+  createdBy       User                @relation(fields: [createdByUserId], references: [id])
+  groups          PracticeRunGroup[]
+  groupRepeats    PracticeRunGroupRepeat[]
+  results         PracticeRunResult[]
+  laps            PracticeRunLap[]
+  academy         Academy                  @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@index([trainingPlanId])
+  @@index([trainingPlanSetId])
+  @@index([sessionDate])
+  @@index([styleId, distanceMeters])
+  @@index([academyId])
+  @@index([academyId, sessionDate])
+}
+
+model PracticeRunGroup {
+  id                        String    @id @default(cuid())
+  practiceRunId             String
+  groupId                   String?
+  groupNameSnapshot         String
+  plannedStartOffsetSeconds Int       @default(0)
+  actualStartTime           DateTime?
+  status                    String    @default("READY")
+  currentRepeatNo           Int       @default(1)
+  totalRepeats              Int       @default(1)
+  repeatStatus              String    @default("READY")
+  repeatStartTime           DateTime?
+  repeatEndTime             DateTime?
+  completedRepeatCount      Int       @default(0)
+  nextRepeatReady           Boolean   @default(true)
+  academyId                 String
+
+  practiceRun PracticeRun         @relation(fields: [practiceRunId], references: [id], onDelete: Cascade)
+  group       TrainingGroup?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  repeats     PracticeRunGroupRepeat[]
+  results     PracticeRunResult[]
+  academy     Academy                 @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@index([practiceRunId])
+  @@index([groupId])
+  @@index([academyId])
+}
+
+model PracticeRunGroupRepeat {
+  id                   String    @id @default(cuid())
+  practiceRunId        String
+  practiceRunGroupId   String
+  repeatNo             Int
+  plannedRepeatCount   Int
+  status               String    @default("READY")
+  actualStartTime      DateTime?
+  completedAt          DateTime?
+  savedAt              DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  academyId            String
+
+  practiceRun      PracticeRun         @relation(fields: [practiceRunId], references: [id], onDelete: Cascade)
+  practiceRunGroup PracticeRunGroup    @relation(fields: [practiceRunGroupId], references: [id], onDelete: Cascade)
+  results          PracticeRunResult[]
+  academy          Academy                  @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@unique([practiceRunGroupId, repeatNo])
+  @@index([practiceRunId])
+  @@index([practiceRunGroupId])
+  @@index([status])
+  @@index([academyId])
+}
+
+model PracticeRunResult {
+  id                  String    @id @default(cuid())
+  practiceRunId       String
+  practiceRunGroupId  String
+  groupRepeatId       String?
+  repeatNo             Int       @default(1)
+  swimmerId           String?
+  swimmerNameSnapshot String
+  laneNo              Int
+  startTime           DateTime?
+  finishTime          DateTime?
+  elapsedSeconds      Float?
+  resultText          String?
+  status              String    @default("READY")
+  academyId           String
+
+  practiceRun PracticeRun      @relation(fields: [practiceRunId], references: [id], onDelete: Cascade)
+  runGroup    PracticeRunGroup @relation(fields: [practiceRunGroupId], references: [id], onDelete: Cascade)
+  groupRepeat PracticeRunGroupRepeat? @relation(fields: [groupRepeatId], references: [id], onDelete: Cascade)
+  swimmer     Swimmer?         @relation(fields: [swimmerId], references: [id], onDelete: SetNull)
+  laps        PracticeRunLap[]
+  academy     Academy                 @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@unique([practiceRunGroupId, repeatNo, laneNo])
+  @@index([practiceRunId])
+  @@index([groupRepeatId])
+  @@index([swimmerId])
+  @@index([academyId])
+}
+
+model PracticeRunLap {
+  id                  String   @id @default(cuid())
+  practiceRunId       String
+  practiceRunResultId String
+  lapNo               Int
+  lapTimeSeconds      Float
+  cumulativeSeconds   Float
+  lapTimeText         String
+  createdAt           DateTime @default(now())
+  academyId           String
+
+  practiceRun PracticeRun       @relation(fields: [practiceRunId], references: [id], onDelete: Cascade)
+  result      PracticeRunResult @relation(fields: [practiceRunResultId], references: [id], onDelete: Cascade)
+  academy     Academy           @relation(fields: [academyId], references: [id], onDelete: Restrict)
+
+  @@unique([practiceRunResultId, lapNo])
+  @@index([practiceRunId])
+  @@index([academyId])
 }

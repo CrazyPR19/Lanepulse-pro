@@ -352,6 +352,7 @@ export async function GET(req: NextRequest) {
         distanceMeters: distance,
         recommendationText,
         createdByUserId: session.userId,
+        academyId: session.academyId!,
       },
     });
 

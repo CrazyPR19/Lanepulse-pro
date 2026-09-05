@@ -74,6 +74,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { AdminTrainingPlans } from "@/components/views/admin-training-plans";
 import {
   Table,
   TableBody,
@@ -89,6 +90,8 @@ import {
 function RoleBadge({ role }: { role: Role }) {
   const map: Record<Role, string> = {
     SUPER_ADMIN: "bg-aqua/15 text-aqua border-aqua/30",
+    ACADEMY_OWNER: "bg-aqua/15 text-aqua border-aqua/30",
+    ACADEMY_ADMIN: "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300",
     COACH: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300",
     VIEWER: "bg-muted text-muted-foreground border-border",
     PARENT: "bg-pink-500/15 text-pink-700 border-pink-500/30 dark:text-pink-300",
@@ -799,7 +802,8 @@ function UserManagementCard() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                  <SelectItem value="ACADEMY_ADMIN">Academy Admin</SelectItem>
+                  {form.role === "ACADEMY_OWNER" && <SelectItem value="ACADEMY_OWNER">Academy Owner</SelectItem>}
                   <SelectItem value="COACH">Coach</SelectItem>
                   <SelectItem value="VIEWER">Viewer</SelectItem>
                   <SelectItem value="PARENT">Parent</SelectItem>
@@ -1221,6 +1225,7 @@ export function AdminView() {
       </div>
 
       <StatsCard />
+      <AdminTrainingPlans />
       <AuditCard />
       <DangerZoneCard />
       <UserManagementCard />

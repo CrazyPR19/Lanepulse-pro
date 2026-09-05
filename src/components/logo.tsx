@@ -14,7 +14,8 @@ export function Logo({
       width={size}
       height={size}
       className={className}
-      aria-hidden="true"
+      role="img"
+      aria-label="LanePulse Pro stopwatch and swim wave logo"
     >
       <defs>
         <linearGradient id="lpGrad" x1="0" y1="0" x2="1" y2="1">
@@ -27,7 +28,7 @@ export function Logo({
           <stop offset="100%" stopColor="#7fdce6" />
         </linearGradient>
       </defs>
-      <rect x="6" y="6" width="108" height="108" rx="26" fill="url(#lpGrad)" />
+      <rect x="6" y="6" width="108" height="108" rx="26" fill="url(#lpGrad)" stroke="#67e8f9" strokeWidth="3" />
       <circle
         cx="60"
         cy="58"
@@ -91,17 +92,17 @@ export function Logo({
 export function LogoLockup({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
-      <Logo size={compact ? 32 : 40} className="lp-wave-anim" />
+      <Logo size={compact ? 36 : 44} className="lp-wave-anim shrink-0" />
       <div className="flex flex-col leading-tight">
         <span
-          className={`font-extrabold tracking-tight text-foreground ${
+          className={`font-extrabold tracking-tight text-white ${
             compact ? "text-base" : "text-lg"
           }`}
         >
-          LanePulse <span className="text-aqua">Pro</span>
+          LanePulse <span className="text-[#22d3ee]">Pro</span>
         </span>
         {!compact && (
-          <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-[#cbd5e1]">
             Smart Swim Timing
           </span>
         )}

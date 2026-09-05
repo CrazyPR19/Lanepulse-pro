@@ -27,6 +27,7 @@ import {
   TrendingDown,
   TrendingUp,
   Trophy,
+  Waves,
 } from "lucide-react";
 
 import { api } from "@/lib/api-client";
@@ -547,7 +548,8 @@ function BestTimesCard({ data }: { data: ParentChildSummaryDTO }) {
             <p className="text-sm">No best times recorded yet.</p>
           </div>
         ) : (
-          <ScrollArea className="h-72 rounded-md border">
+          <>
+          <ScrollArea className="hidden sm:block h-72 rounded-md border">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -573,6 +575,8 @@ function BestTimesCard({ data }: { data: ParentChildSummaryDTO }) {
               </TableBody>
             </Table>
           </ScrollArea>
+          <div className="sm:hidden space-y-2">{best.map((item, index) => <div key={`${item.styleId}-${item.distanceMeters}-${index}`} className="rounded-md border p-3 flex items-center justify-between gap-3"><div className="min-w-0"><p className="font-medium break-words">{item.styleName} · {item.distanceMeters}m</p><p className="text-xs text-muted-foreground">{formatDateShort(item.sessionDate)}</p></div><span className="font-mono font-semibold text-aqua shrink-0">{item.bestText}</span></div>)}</div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -669,7 +673,7 @@ function LapConsistencyCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="rounded-lg border bg-card p-3 text-center">
             <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Avg Lap
@@ -807,6 +811,11 @@ function Last5SessionsCard({
   );
 }
 
+function PracticeResultsCard({ data }: { data: ParentChildSummaryDTO }) {
+  const results = data.practiceResults ?? [];
+  return <Card className="bg-card"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Waves className="size-4 text-aqua" /> Practice Plan Results</CardTitle><CardDescription>Read-only results from multi-group planned practice.</CardDescription></CardHeader><CardContent>{results.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">No completed practice plan results yet.</p> : <div className="divide-y rounded-md border">{results.slice(0, 10).map((result) => <div key={result.id} className="p-3 flex items-center gap-3"><div className="min-w-0 flex-1"><p className="font-medium text-sm truncate">{result.planName}</p><p className="text-xs text-muted-foreground">{result.setLabel} · {result.groupName} · R{result.repeatNo ?? "—"} L{result.laneNo}</p><p className="text-xs text-muted-foreground">{formatDateShort(result.sessionDate)} · {result.lapCount} laps</p></div><span className="font-mono font-semibold text-aqua shrink-0">{result.resultText ?? (result.elapsedSeconds == null ? "—" : formatSeconds(result.elapsedSeconds))}</span></div>)}</div>}</CardContent></Card>;
+}
+
 // ============================================================
 // Loading Skeletons
 // ============================================================
@@ -932,6 +941,7 @@ function ChildSummaryBlock({
 
       {/* Last 5 sessions */}
       <Last5SessionsCard data={data} />
+      <PracticeResultsCard data={data} />
     </div>
   );
 }

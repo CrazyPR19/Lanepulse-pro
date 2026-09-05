@@ -2,7 +2,11 @@
 
 // LanePulse Pro - app shell (sidebar + mobile bottom nav + header + content)
 
-import { useAppStore, type ViewKey } from "@/lib/store";
+import { useAppStore, useTimerStore, type ViewKey } from "@/lib/store";
+import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import type { Role } from "@/lib/types";
 import { LogoLockup } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +25,9 @@ import {
   X,
   Waves,
   HeartHandshake,
+  ClipboardList,
+  Activity,
+  Globe2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,28 +35,37 @@ interface NavItem {
   key: ViewKey;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles: ("SUPER_ADMIN" | "COACH" | "VIEWER" | "PARENT")[];
+  roles: Role[];
   mobileLabel?: string; // shorter label for bottom nav
+  platformOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["SUPER_ADMIN", "COACH", "VIEWER"] },
-  { key: "timer", label: "Timing Console", icon: Timer, roles: ["SUPER_ADMIN", "COACH"], mobileLabel: "Timing" },
-  { key: "swimmers", label: "Swimmers", icon: Users, roles: ["SUPER_ADMIN", "COACH"] },
-  { key: "groups", label: "Groups / Heats", icon: Grid3x3, roles: ["SUPER_ADMIN", "COACH"], mobileLabel: "Groups" },
-  { key: "history", label: "Session History", icon: History, roles: ["SUPER_ADMIN", "COACH", "VIEWER"], mobileLabel: "History" },
-  { key: "analysis", label: "Analysis", icon: BarChart3, roles: ["SUPER_ADMIN", "COACH", "VIEWER"] },
+  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH", "VIEWER"] },
+  { key: "timer", label: "Timing Console", icon: Timer, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"], mobileLabel: "Timing" },
+  { key: "training-plan", label: "Training Plan", icon: ClipboardList, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"], mobileLabel: "Plan" },
+  { key: "practice", label: "Practice Console", icon: Activity, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"], mobileLabel: "Practice" },
+  { key: "swimmers", label: "Swimmers", icon: Users, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"] },
+  { key: "groups", label: "Groups / Heats", icon: Grid3x3, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"], mobileLabel: "Groups" },
+  { key: "history", label: "Session History", icon: History, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH", "VIEWER"], mobileLabel: "History" },
+  { key: "analysis", label: "Analysis", icon: BarChart3, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH", "VIEWER"] },
   { key: "parent", label: "My Child", icon: HeartHandshake, roles: ["PARENT"] },
-  { key: "admin", label: "Admin", icon: Shield, roles: ["SUPER_ADMIN"] },
-  { key: "settings", label: "Settings", icon: Settings, roles: ["SUPER_ADMIN"] },
+  { key: "admin", label: "Admin", icon: Shield, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN"] },
+  { key: "settings", label: "Settings", icon: Settings, roles: ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN"] },
+  { key: "platform", label: "Platform Administration", icon: Globe2, roles: [], platformOnly: true },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { view, setView, user, sidebarOpen, setSidebarOpen } = useAppStore();
 
   const role = user?.role;
-  const items = NAV.filter((n) => n.roles.some((r) => r === role));
+  const items = NAV.filter((item) => user?.platformRole === "PLATFORM_SUPER_ADMIN" ? item.platformOnly : !item.platformOnly && item.roles.some((candidate) => candidate === role));
   const current = items.find((n) => n.key === view);
+  const setLaneCount = useTimerStore((state) => state.setLaneCount);
+  const academy = useQuery<{ settings: { defaultLaneCount: number } | null }>({ queryKey: ["academy", "settings"], queryFn: () => api.get("/api/academy/settings"), enabled: !!user?.academyId });
+  useEffect(() => {
+    if (academy.data?.settings?.defaultLaneCount) setLaneCount(academy.data.settings.defaultLaneCount);
+  }, [academy.data?.settings?.defaultLaneCount, setLaneCount]);
   // Note: role-based view redirect is handled by AuthGate's useEffect —
   // do NOT call setView during render (causes React setState-in-render error).
 
@@ -67,9 +83,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="lg:hidden min-w-0">
           <LogoLockup compact />
         </div>
-        <div className="hidden lg:flex items-center gap-2 text-sm text-sidebar-foreground/70">
+        <div className="hidden lg:flex items-center gap-2 text-sm text-[#cbd5e1]">
           <Waves className="size-4 text-aqua" />
-          <span>Smart Swim Timing</span>
+          <span>{user?.academyName ?? "Smart Swim Timing"}</span>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="hidden sm:flex flex-col items-end leading-tight min-w-0">
@@ -101,6 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="hidden lg:flex w-60 flex-col border-r bg-sidebar shrink-0">
           <div className="p-4 border-b border-sidebar-border">
             <LogoLockup />
+            {user?.academyName && <p className="mt-2 text-xs text-sidebar-foreground/70 truncate">{user.academyName}</p>}
           </div>
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto lp-scroll">
             {items.map((item) => {
@@ -124,7 +141,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
           <div className="p-3 border-t border-sidebar-border text-[10px] text-sidebar-foreground/50">
-            LanePulse Pro v1.1 • 12-Lane Pool
+            Powered by LanePulse Pro · {academy.data?.settings?.defaultLaneCount ?? "-"} lanes
           </div>
         </aside>
 

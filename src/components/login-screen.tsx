@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, LogIn, ShieldCheck } from "lucide-react";
+import { Loader2, LogIn, ShieldCheck, UserPlus } from "lucide-react";
+import { AcademyRegistrationForm } from "@/components/academy-registration-form";
 import { useAppStore } from "@/lib/store";
 import { toast } from "sonner";
 
@@ -18,6 +19,7 @@ export function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [registering, setRegistering] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,17 +65,17 @@ export function LoginScreen() {
         <Card className="shadow-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <LogIn className="size-5 text-aqua" />
-              Sign In
+              {registering ? <UserPlus className="size-5 text-aqua" /> : <LogIn className="size-5 text-aqua" />}
+              {registering ? "Create Your Academy" : "Sign In"}
             </CardTitle>
             <CardDescription>
-              Enter your credentials to access the coach console.
+              {registering ? "Create a secure workspace for your academy." : "Use your email or username to access your academy."}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={submit} className="space-y-4">
+            {registering ? <AcademyRegistrationForm onBack={() => setRegistering(false)} /> : <form onSubmit={submit} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username">Email or Username</Label>
                 <Input
                   id="username"
                   value={username}
@@ -108,12 +110,16 @@ export function LoginScreen() {
                 )}
                 Sign In
               </Button>
+              <Button type="button" variant="outline" className="w-full h-11" onClick={() => setRegistering(true)}>
+                <UserPlus className="size-4" /> Create Your Academy
+              </Button>
             </form>
+            }
           </CardContent>
         </Card>
         <p className="text-center text-xs text-white/60 mt-4 flex items-center justify-center gap-1.5">
           <ShieldCheck className="size-3" />
-          Role-based access: Super Admin • Coach • Viewer
+          Secure academy workspaces • Powered by LanePulse Pro
         </p>
       </div>
     </div>

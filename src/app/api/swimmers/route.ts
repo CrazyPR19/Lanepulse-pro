@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
         dateOfBirth,
         remarks: body.remarks?.trim() || null,
         activeStatus: true,
+        academyId: session.academyId,
       },
     });
     await audit(

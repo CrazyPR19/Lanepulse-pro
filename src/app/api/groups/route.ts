@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
         groupDate,
         remarks: body.remarks?.trim() || null,
         isActive: true,
+        academyId: session.academyId,
       },
       include: { _count: { select: { members: true } } },
     });

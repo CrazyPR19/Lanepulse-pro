@@ -84,6 +84,9 @@ export async function POST(
     if (missing) return json({ error: missing }, 400);
 
     const swimmerId = body.swimmerId!.trim();
+    const academySettings = await db.academySettings.findUnique({ where: { academyId: session.academyId } });
+    const academyLaneCount = academySettings?.defaultLaneCount ?? 8;
+    if (!Number.isInteger(Number(body.laneNo)) || Number(body.laneNo) < 1 || Number(body.laneNo) > academyLaneCount) return json({ error: `Lane number must be between 1 and ${academyLaneCount}.` }, 400);
     const laneNo = clampLane(Number(body.laneNo));
 
     const group = await db.trainingGroup.findUnique({ where: { id } });
@@ -129,7 +132,7 @@ export async function POST(
     });
 
     const created = await db.groupMember.create({
-      data: { groupId: id, swimmerId, laneNo, isActive: true },
+      data: { groupId: id, swimmerId, laneNo, isActive: true, academyId: session.academyId },
       include: { swimmer: true },
     });
     await audit(
@@ -159,6 +162,9 @@ export async function PUT(
     if (!Array.isArray(body.members)) {
       return json({ error: "members must be an array" }, 400);
     }
+    const academySettings = await db.academySettings.findUnique({ where: { academyId: session.academyId } });
+    const academyLaneCount = academySettings?.defaultLaneCount ?? 8;
+    if (body.members.some((member) => !Number.isInteger(Number(member.laneNo)) || Number(member.laneNo) < 1 || Number(member.laneNo) > academyLaneCount)) return json({ error: `Lane numbers must be between 1 and ${academyLaneCount}.` }, 400);
 
     const group = await db.trainingGroup.findUnique({ where: { id } });
     if (!group) return json({ error: "Group not found" }, 404);
@@ -241,6 +247,7 @@ export async function PUT(
             swimmerId: m.swimmerId!,
             laneNo: m.laneNo,
             isActive: true,
+            academyId: session.academyId,
           },
         });
       }

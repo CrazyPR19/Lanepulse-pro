@@ -62,6 +62,29 @@ export async function GET(
       orderBy: { session: { sessionDate: "desc" } },
     });
 
+    const practiceRows = await db.practiceRunResult.findMany({
+      where: { swimmerId, practiceRun: { status: "COMPLETED" } },
+      include: {
+        practiceRun: { include: { trainingPlan: true, trainingPlanSet: true, style: true } },
+        runGroup: true,
+        laps: true,
+      },
+      orderBy: { practiceRun: { sessionDate: "desc" } },
+      take: 20,
+    });
+    const practiceResults = practiceRows.map((result) => ({
+      id: result.id,
+      planName: result.practiceRun.planNameSnapshot ?? result.practiceRun.trainingPlan?.planName ?? "Practice Run",
+      setLabel: result.practiceRun.setLabelSnapshot ?? result.practiceRun.trainingPlanSet?.setLabel ?? `${result.practiceRun.distanceMeters}m ${result.practiceRun.styleNameSnapshot ?? result.practiceRun.style.styleName}`,
+      sessionDate: result.practiceRun.sessionDate.toISOString(),
+      groupName: result.runGroup.groupNameSnapshot,
+      repeatNo: result.repeatNo,
+      laneNo: result.laneNo,
+      elapsedSeconds: result.elapsedSeconds,
+      resultText: result.resultText,
+      lapCount: result.laps.length,
+    }));
+
     // --------------------------------------------------------------
     // totalSessions — count of FINISHED lanes for this swimmer.
     // --------------------------------------------------------------
@@ -374,6 +397,7 @@ export async function GET(
       recommendations,
       lapConsistency,
       last5Sessions,
+      practiceResults,
     };
 
     return json(summary);

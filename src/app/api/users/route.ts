@@ -12,7 +12,7 @@ import { hashPassword } from "@/lib/helpers";
 import type { Role } from "@/lib/types";
 import { NextRequest } from "next/server";
 
-const VALID_ROLES: Role[] = ["SUPER_ADMIN", "COACH", "VIEWER", "PARENT"];
+const VALID_ROLES: Role[] = ["ACADEMY_ADMIN", "COACH", "VIEWER", "PARENT"];
 
 export async function GET() {
   try {
@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
 
     if (!VALID_ROLES.includes(body.role as Role)) {
       return json({ error: "Invalid role" }, 400);
+    }
+    if (session.academyRole === "ACADEMY_ADMIN" && body.role === "ACADEMY_ADMIN") {
+      return json({ error: "Only the academy owner can assign Academy Admins." }, 403);
     }
 
     const email = body.email!.trim().toLowerCase();

@@ -74,27 +74,27 @@ export const DEFAULT_STYLES = [
 
 /** Role check helpers */
 export function canManageSwimmers(role?: string | null): boolean {
-  return role === "SUPER_ADMIN" || role === "COACH";
+  return ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"].includes(role ?? "");
 }
 export function canRunSessions(role?: string | null): boolean {
-  return role === "SUPER_ADMIN" || role === "COACH";
+  return ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"].includes(role ?? "");
 }
 export function canDeleteEverything(role?: string | null): boolean {
-  return role === "SUPER_ADMIN";
+  return role === "SUPER_ADMIN" || role === "ACADEMY_OWNER";
 }
 export function canManageUsers(role?: string | null): boolean {
-  return role === "SUPER_ADMIN";
+  return ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN"].includes(role ?? "");
 }
 export function canViewReports(role?: string | null): boolean {
   return (
-    role === "SUPER_ADMIN" ||
+    role === "SUPER_ADMIN" || role === "ACADEMY_OWNER" || role === "ACADEMY_ADMIN" ||
     role === "COACH" ||
     role === "VIEWER" ||
     role === "PARENT"
   );
 }
 export function canManageParentAccess(role?: string | null): boolean {
-  return role === "SUPER_ADMIN" || role === "COACH";
+  return ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"].includes(role ?? "");
 }
 export function isParent(role?: string | null): boolean {
   return role === "PARENT";

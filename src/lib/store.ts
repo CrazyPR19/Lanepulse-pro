@@ -11,7 +11,6 @@ import type {
   UserDTO,
   GroupMemberDTO,
 } from "@/lib/types";
-import { POOL_LANES } from "@/lib/helpers";
 
 // ============================================================
 // APP STORE — navigation + current user (NOT persisted)
@@ -20,13 +19,16 @@ import { POOL_LANES } from "@/lib/helpers";
 export type ViewKey =
   | "dashboard"
   | "timer"
+  | "training-plan"
+  | "practice"
   | "swimmers"
   | "groups"
   | "history"
   | "analysis"
   | "admin"
   | "settings"
-  | "parent";
+  | "parent"
+  | "platform";
 
 interface AppState {
   view: ViewKey;
@@ -52,10 +54,10 @@ export const useAppStore = create<AppState>((set) => ({
 
 export function canAccess(view: ViewKey, role: Role | undefined | null): boolean {
   if (!role) return false;
-  if (view === "admin" || view === "settings") return role === "SUPER_ADMIN";
+  if (view === "admin" || view === "settings") return ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN"].includes(role);
   if (view === "parent") return role === "PARENT";
-  if (view === "timer" || view === "swimmers" || view === "groups") {
-    return role === "SUPER_ADMIN" || role === "COACH";
+  if (view === "timer" || view === "training-plan" || view === "practice" || view === "swimmers" || view === "groups") {
+    return ["SUPER_ADMIN", "ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH"].includes(role);
   }
   return true;
 }
@@ -81,6 +83,8 @@ interface SessionMeta {
   distanceMeters: number;
   status: SessionStatus;
   remarks: string;
+  sessionStartTime?: string;
+  sessionEndTime?: string;
 }
 
 interface TimerState {
@@ -130,6 +134,7 @@ interface TimerState {
   // After save
   markSaved: () => void;
   clearAll: () => void;
+  setLaneCount: (count: number) => void;
 }
 
 function emptyLane(laneNo: number): LiveLaneState {
@@ -147,8 +152,8 @@ function emptyLane(laneNo: number): LiveLaneState {
   };
 }
 
-function freshLanes(): LiveLaneState[] {
-  return POOL_LANES.map(emptyLane);
+function freshLanes(count = 12): LiveLaneState[] {
+  return Array.from({ length: count }, (_, index) => emptyLane(index + 1));
 }
 
 function freshMeta(): SessionMeta {
@@ -182,6 +187,7 @@ const initialTimer: Omit<
   | "resetAll"
   | "markSaved"
   | "clearAll"
+  | "setLaneCount"
 > = {
   selectedGroupId: null,
   selectedGroupName: null,
@@ -209,9 +215,9 @@ export const useTimerStore = create<TimerState>()(
       setMode: (m) => set({ mode: m }),
 
       loadSelectedGroup: (members) => {
-        const lanes = freshLanes();
+        const lanes = freshLanes(get().lanes.length);
         for (const m of members) {
-          if (m.laneNo >= 1 && m.laneNo <= 12) {
+          if (m.laneNo >= 1 && m.laneNo <= lanes.length) {
             lanes[m.laneNo - 1] = {
               ...lanes[m.laneNo - 1],
               swimmerId: m.swimmerId,
@@ -230,9 +236,9 @@ export const useTimerStore = create<TimerState>()(
       },
 
       loadNextGroup: (members) => {
-        const lanes = freshLanes();
+        const lanes = freshLanes(get().lanes.length);
         for (const m of members) {
-          if (m.laneNo >= 1 && m.laneNo <= 12) {
+          if (m.laneNo >= 1 && m.laneNo <= lanes.length) {
             lanes[m.laneNo - 1] = {
               ...lanes[m.laneNo - 1],
               swimmerId: m.swimmerId,
@@ -392,10 +398,12 @@ export const useTimerStore = create<TimerState>()(
         })),
 
       clearAll: () =>
-        set({
-          ...initialTimer,
-          lanes: freshLanes(),
-          meta: freshMeta(),
+        set((state) => ({ ...initialTimer, lanes: freshLanes(state.lanes.length), meta: freshMeta() })),
+      setLaneCount: (count) =>
+        set((state) => {
+          const safeCount = [4, 6, 8, 10, 12].includes(count) ? count : 8;
+          if (state.lanes.length === safeCount) return state;
+          return { lanes: freshLanes(safeCount).map((lane, index) => state.lanes[index] ?? lane) };
         }),
     }),
     {

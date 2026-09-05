@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (missing) return json({ error: missing }, 400);
 
     const styleName = body.styleName!.trim();
-    const dup = await db.swimmingStyle.findUnique({
+    const dup = await db.swimmingStyle.findFirst({
       where: { styleName },
     });
     if (dup) return json({ error: "Style name already exists" }, 409);
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
         sortOrder:
           typeof body.sortOrder === "number" ? body.sortOrder : 0,
         isActive: body.isActive ?? true,
+        academyId: session.academyId,
       },
     });
     await audit(

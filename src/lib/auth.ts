@@ -2,10 +2,9 @@
 
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { JWT } from "next-auth";
-import { db } from "@/lib/db";
+import { systemDb } from "@/lib/db";
 import { verifyPassword } from "@/lib/helpers";
-import type { Role } from "@/lib/types";
+import type { PlatformRole, Role } from "@/lib/types";
 
 declare module "next-auth" {
   interface Session {
@@ -15,6 +14,10 @@ declare module "next-auth" {
       fullName: string;
       email: string;
       role: Role;
+      academyId: string | null;
+      academyName: string | null;
+      academyRole: Role;
+      platformRole: PlatformRole | null;
       isActive: boolean;
     };
   }
@@ -27,6 +30,10 @@ declare module "next-auth/jwt" {
     fullName?: string;
     email?: string;
     role?: Role;
+    academyId?: string | null;
+    academyName?: string | null;
+    academyRole?: Role;
+    platformRole?: PlatformRole | null;
     isActive?: boolean;
   }
 }
@@ -43,15 +50,23 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null;
-        const user = await db.user.findUnique({
-          where: { username: credentials.username },
+        const login = credentials.username.trim();
+        const user = await systemDb.user.findFirst({
+          where: {
+            OR: [
+              { username: { equals: login, mode: "insensitive" } },
+              { email: { equals: login, mode: "insensitive" } },
+            ],
+          },
+          include: { academy: true },
         });
         if (!user) return null;
         if (!user.isActive) return null;
+        if (user.academyId && !user.academy?.isActive) return null;
         const ok = await verifyPassword(credentials.password, user.passwordHash);
         if (!ok) return null;
         // stamp last login
-        await db.user.update({
+        await systemDb.user.update({
           where: { id: user.id },
           data: { lastLoginAt: new Date() },
         });
@@ -61,20 +76,37 @@ export const authOptions: NextAuthOptions = {
           fullName: user.fullName,
           email: user.email,
           role: user.role as Role,
+          academyId: user.academyId,
+          academyName: user.academy?.academyName ?? null,
+          academyRole: user.role as Role,
+          platformRole: user.platformRole as PlatformRole | null,
           isActive: user.isActive,
-        } as any;
+        };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        const u = user as any;
+        const u = user as typeof user & {
+          username: string;
+          fullName: string;
+          role: Role;
+          academyId: string | null;
+          academyName: string | null;
+          academyRole: Role;
+          platformRole: PlatformRole | null;
+          isActive: boolean;
+        };
         token.uid = u.id;
         token.username = u.username;
         token.fullName = u.fullName;
-        token.email = u.email;
+        token.email = u.email ?? "";
         token.role = u.role;
+        token.academyId = u.academyId;
+        token.academyName = u.academyName;
+        token.academyRole = u.academyRole;
+        token.platformRole = u.platformRole;
         token.isActive = u.isActive;
       }
       return token;
@@ -86,6 +118,10 @@ export const authOptions: NextAuthOptions = {
         session.user.fullName = token.fullName as string;
         session.user.email = token.email as string;
         session.user.role = token.role as Role;
+        session.user.academyId = token.academyId ?? null;
+        session.user.academyName = token.academyName ?? null;
+        session.user.academyRole = (token.academyRole ?? token.role) as Role;
+        session.user.platformRole = token.platformRole ?? null;
         session.user.isActive = (token.isActive ?? true) as boolean;
       }
       return session;

@@ -1,6 +1,14 @@
 // LanePulse Pro - Shared types
 
-export type Role = "SUPER_ADMIN" | "COACH" | "VIEWER" | "PARENT";
+export type Role =
+  | "SUPER_ADMIN"
+  | "ACADEMY_OWNER"
+  | "ACADEMY_ADMIN"
+  | "COACH"
+  | "VIEWER"
+  | "PARENT";
+
+export type PlatformRole = "PLATFORM_SUPER_ADMIN";
 
 export type Gender = "MALE" | "FEMALE" | "OTHER";
 
@@ -9,6 +17,44 @@ export type SessionStatus = "DRAFT" | "RUNNING" | "COMPLETED" | "ABORTED";
 export type LaneStatus = "IDLE" | "READY" | "RUNNING" | "FINISHED" | "DNF";
 
 export type TimerMode = "console" | "finish" | "lap";
+
+export type TrainingPlanStatus = "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+export type PracticeRunStatus = "DRAFT" | "RUNNING" | "COMPLETED" | "CANCELLED";
+
+export interface TrainingPlanSetDTO {
+  id: string;
+  planId: string;
+  sequenceNo: number;
+  distanceMeters: number;
+  repeatCount: number;
+  swimmingStyleId: string;
+  setLabel: string;
+  targetTimeSeconds: number | null;
+  restIntervalSeconds: number | null;
+  notes: string | null;
+  isActive: boolean;
+  style: SwimmingStyleDTO;
+}
+
+export interface TrainingPlanDTO {
+  id: string;
+  planDate: string;
+  planName: string;
+  createdByUserId: string;
+  remarks: string | null;
+  status: TrainingPlanStatus;
+  createdAt: string;
+  updatedAt: string;
+  copiedFromPlanId: string | null;
+  isActive: boolean;
+  deletedAt: string | null;
+  deletedByUserId: string | null;
+  sets: TrainingPlanSetDTO[];
+  createdBy?: { fullName: string };
+  copiedFrom?: { id: string; planName: string } | null;
+  _count?: { runs: number; copies?: number };
+  completedRunCount?: number;
+}
 
 export interface UserDTO {
   id: string;
@@ -19,6 +65,10 @@ export interface UserDTO {
   isActive: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  academyId?: string | null;
+  academyName?: string | null;
+  academyRole?: Role;
+  platformRole?: PlatformRole | null;
 }
 
 export interface SwimmerDTO {
@@ -292,5 +342,16 @@ export interface ParentChildSummaryDTO {
     resultText: string | null;
     elapsedSeconds: number | null;
   }[];
+  practiceResults: {
+    id: string;
+    planName: string;
+    setLabel: string;
+    sessionDate: string;
+    groupName: string;
+    repeatNo: number | null;
+    laneNo: number;
+    elapsedSeconds: number | null;
+    resultText: string | null;
+    lapCount: number;
+  }[];
 }
-
