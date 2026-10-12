@@ -37,8 +37,8 @@ interface AppState {
   setUser: (u: UserDTO | null) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (b: boolean) => void;
-  hasSetup: boolean;
-  setHasSetup: (b: boolean) => void;
+  hasSetup: boolean | undefined;
+  setHasSetup: (b: boolean | undefined) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -48,7 +48,7 @@ export const useAppStore = create<AppState>((set) => ({
   setUser: (u) => set({ user: u }),
   sidebarOpen: false,
   setSidebarOpen: (b) => set({ sidebarOpen: b }),
-  hasSetup: false,
+  hasSetup: undefined,
   setHasSetup: (b) => set({ hasSetup: b }),
 }));
 

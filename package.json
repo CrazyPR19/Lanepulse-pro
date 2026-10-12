@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev -p 3000",
     "build": "next build && node .zscripts/copy-standalone.mjs",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
@@ -11,6 +12,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:backfill-academy": "node scripts/backfill-default-academy.mjs",
+    "db:deploy": "prisma migrate deploy",
+    "db:check-production": "node --experimental-strip-types scripts/check-production-db.ts",
     "db:reset": "prisma migrate reset"
   },
   "dependencies": {

@@ -1,5 +1,16 @@
 // LanePulse Pro - frontend API client
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function req<T>(
   url: string,
   options?: RequestInit
@@ -17,7 +28,7 @@ async function req<T>(
     const msg =
       (data && (data.error || data.message)) ||
       `Request failed (${res.status})`;
-    throw new Error(msg);
+    throw new ApiError(msg, res.status, data?.code);
   }
   return data as T;
 }

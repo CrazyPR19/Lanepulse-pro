@@ -137,7 +137,7 @@ export function SetupWizard() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                     <div>
-                      <span className="text-foreground/70">Type:</span> SQLite (built-in)
+                      <span className="text-foreground/70">Type:</span> PostgreSQL
                     </div>
                     <div>
                       <span className="text-foreground/70">Status:</span> Healthy
@@ -151,9 +151,8 @@ export function SetupWizard() {
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  LanePulse Pro ships with a built-in database that's ready to go.
-                  No external database setup needed. Your data is stored locally and
-                  securely.
+                  The database connection and required LanePulse tables have been
+                  verified. This wizard is available because no users exist yet.
                 </p>
                 <div className="flex justify-end">
                   <Button onClick={() => setStep(2)} className="bg-navy hover:bg-navy/90">

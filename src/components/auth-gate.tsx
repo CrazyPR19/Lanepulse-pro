@@ -2,14 +2,15 @@
 
 // LanePulse Pro - top-level auth gate
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { api } from "@/lib/api-client";
+import { api, ApiError } from "@/lib/api-client";
 import { useAppStore, canAccess, defaultViewForRole } from "@/lib/store";
 import { SetupWizard } from "@/components/setup-wizard";
 import { LoginScreen } from "@/components/login-screen";
 import { AppShell } from "@/components/app-shell";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 
 import { DashboardView } from "@/components/views/dashboard-view";
@@ -27,11 +28,14 @@ import { PlatformAdminView } from "@/components/views/platform-admin-view";
 import { AcademyOnboarding } from "@/components/academy-onboarding";
 import { useQuery } from "@tanstack/react-query";
 
-type Phase = "loading" | "setup" | "login" | "app";
+type Phase = "loading" | "setup" | "login" | "app" | "database-error";
+type SetupFailure = "DATABASE_UNAVAILABLE" | "DATABASE_SCHEMA_NOT_READY";
 
 export function AuthGate() {
   const { data: session, status } = useSession();
   const { user, setUser, view, hasSetup, setHasSetup, setView } = useAppStore();
+  const [setupFailure, setSetupFailure] = useState<SetupFailure | null>(null);
+  const [setupCheck, setSetupCheck] = useState(0);
   const academySettings = useQuery<any>({ queryKey: ["academy", "settings"], queryFn: () => api.get("/api/academy/settings"), enabled: !!user?.academyId && user.role === "ACADEMY_OWNER" });
 
   // Check setup status on first mount (side-effect only — no setState-in-effect
@@ -41,19 +45,27 @@ export function AuthGate() {
     let cancelled = false;
     (async () => {
       try {
-        const s = await api.get<{ needsSetup: boolean; hasUsers: boolean }>(
+        const s = await api.get<{ ready: boolean; needsSetup: boolean; hasUsers: boolean }>(
           "/api/setup"
         );
         if (cancelled) return;
+        setSetupFailure(null);
         setHasSetup(!s.needsSetup);
-      } catch {
-        /* ignore */
+      } catch (error) {
+        if (cancelled) return;
+        const code = error instanceof ApiError ? error.code : undefined;
+        setHasSetup(undefined);
+        setSetupFailure(
+          code === "DATABASE_SCHEMA_NOT_READY"
+            ? "DATABASE_SCHEMA_NOT_READY"
+            : "DATABASE_UNAVAILABLE",
+        );
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [setHasSetup]);
+  }, [setHasSetup, setupCheck]);
 
   // When authenticated but user profile not yet loaded, fetch it.
   useEffect(() => {
@@ -67,11 +79,34 @@ export function AuthGate() {
 
   // Derive phase from current state — no stored state, no setState-in-effect.
   const phase: Phase = (() => {
+    if (setupFailure) return "database-error";
     if (status === "loading" || hasSetup === undefined) return "loading";
     if (!hasSetup) return "setup";
     if (status === "authenticated" && session?.user) return "app";
     return "login";
   })();
+
+  if (phase === "database-error") {
+    const schemaMissing = setupFailure === "DATABASE_SCHEMA_NOT_READY";
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
+        <div className="w-full max-w-md rounded-lg border border-amber-400/30 bg-slate-900 p-6 text-center text-white shadow-xl">
+          <AlertTriangle className="mx-auto size-10 text-amber-400" />
+          <h1 className="mt-4 text-xl font-semibold">
+            {schemaMissing ? "Database setup incomplete" : "Database temporarily unavailable"}
+          </h1>
+          <p className="mt-2 text-sm text-slate-300">
+            {schemaMissing
+              ? "LanePulse cannot start until the production database migrations have been applied."
+              : "LanePulse could not connect to its database. Please try again shortly."}
+          </p>
+          <Button className="mt-5 min-h-11" onClick={() => { setSetupFailure(null); setSetupCheck((value) => value + 1); }}>
+            <RefreshCw className="size-4" /> Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // When user loads, if their role can't access the current view, switch to their default.
   useEffect(() => {
