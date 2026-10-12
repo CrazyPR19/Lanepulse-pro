@@ -56,7 +56,13 @@ npm run db:check-production
 
 ## Vercel Build Policy
 
-`postinstall` generates Prisma Client. `db:deploy` is intentionally separate from `build`; this prevents Preview deployments from accidentally migrating Production. Apply production migrations in a controlled release step before promoting the corresponding Vercel deployment.
+`postinstall` generates Prisma Client. `vercel.json` overrides the existing project's default `npm run build` command with `npm run vercel-build`, which generates the client, runs `prisma migrate deploy`, builds Next.js, and copies the standalone output. Production and Preview must use separate Neon databases because Vercel executes the same build command in both environments.
+
+```text
+prisma generate -> prisma migrate deploy -> next build -> copy standalone
+```
+
+Keep the normal local `npm run build` unchanged. Never point Preview builds at the Production database.
 
 ## Setup API States
 

@@ -5,6 +5,7 @@ const { join } = require("node:path") as typeof import("node:path");
 const prisma = new PrismaClient({ log: [] });
 const requiredTables = [
   "User",
+  "SwimmingStyle",
   "Academy",
   "AcademySettings",
   "Swimmer",
@@ -44,6 +45,7 @@ async function tableNameAlternatives(tableName: string) {
 async function tableCount(tableName: (typeof requiredTables)[number]) {
   const safeQueries: Record<(typeof requiredTables)[number], () => Promise<CountRow[]>> = {
     User: () => prisma.$queryRaw`SELECT COUNT(*)::bigint AS count FROM "User"`,
+    SwimmingStyle: () => prisma.$queryRaw`SELECT COUNT(*)::bigint AS count FROM "SwimmingStyle"`,
     Academy: () => prisma.$queryRaw`SELECT COUNT(*)::bigint AS count FROM "Academy"`,
     AcademySettings: () => prisma.$queryRaw`SELECT COUNT(*)::bigint AS count FROM "AcademySettings"`,
     Swimmer: () => prisma.$queryRaw`SELECT COUNT(*)::bigint AS count FROM "Swimmer"`,
@@ -126,6 +128,7 @@ async function main() {
   if (existing.get("Academy")) {
     const orphanChecks = [
       ["User", existing.get("User")],
+      ["SwimmingStyle", existing.get("SwimmingStyle")],
       ["Swimmer", existing.get("Swimmer")],
       ["TrainingGroup", existing.get("TrainingGroup")],
       ["TrainingPlan", existing.get("TrainingPlan")],
@@ -135,6 +138,7 @@ async function main() {
       if (!exists) continue;
       const query = {
         User: () => prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::bigint AS count FROM "User" r LEFT JOIN "Academy" a ON a.id = r."academyId" WHERE r."academyId" IS NOT NULL AND a.id IS NULL`,
+        SwimmingStyle: () => prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::bigint AS count FROM "SwimmingStyle" r LEFT JOIN "Academy" a ON a.id = r."academyId" WHERE a.id IS NULL`,
         Swimmer: () => prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::bigint AS count FROM "Swimmer" r LEFT JOIN "Academy" a ON a.id = r."academyId" WHERE a.id IS NULL`,
         TrainingGroup: () => prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::bigint AS count FROM "TrainingGroup" r LEFT JOIN "Academy" a ON a.id = r."academyId" WHERE a.id IS NULL`,
         TrainingPlan: () => prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::bigint AS count FROM "TrainingPlan" r LEFT JOIN "Academy" a ON a.id = r."academyId" WHERE a.id IS NULL`,
