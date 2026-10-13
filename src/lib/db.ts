@@ -14,6 +14,8 @@ export const systemDb =
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = systemDb
 
 const academyOwnedModels = new Set([
+  'Academy',
+  'AcademySettings',
   'User',
   'Swimmer',
   'SwimmingStyle',
@@ -41,24 +43,28 @@ const whereOperations = new Set([
 
 function tenantArgs(model: string, operation: string, args: unknown, academyId: string): unknown {
   const scoped = { ...((args ?? {}) as Record<string, unknown>) }
-  const tenantWhere = model === 'TrainingPlanSet' ? { plan: { academyId } } : { academyId }
+  const tenantWhere = model === 'Academy'
+    ? { id: academyId }
+    : model === 'TrainingPlanSet'
+      ? { plan: { academyId } }
+      : { academyId }
 
   if (whereOperations.has(operation)) {
     scoped.where = {
       ...((scoped.where ?? {}) as Record<string, unknown>),
       ...tenantWhere,
     }
-  } else if (operation === 'create' && model !== 'TrainingPlanSet') {
+  } else if (operation === 'create' && model !== 'TrainingPlanSet' && model !== 'Academy') {
     scoped.data = {
       ...((scoped.data ?? {}) as Record<string, unknown>),
       academyId,
     }
-  } else if (operation === 'createMany' && model !== 'TrainingPlanSet') {
+  } else if (operation === 'createMany' && model !== 'TrainingPlanSet' && model !== 'Academy') {
     const data = scoped.data
     scoped.data = Array.isArray(data)
       ? data.map((row) => ({ ...(row as Record<string, unknown>), academyId }))
       : { ...((data ?? {}) as Record<string, unknown>), academyId }
-  } else if (operation === 'upsert' && model !== 'TrainingPlanSet') {
+  } else if (operation === 'upsert' && model !== 'TrainingPlanSet' && model !== 'Academy') {
     scoped.where = {
       ...((scoped.where ?? {}) as Record<string, unknown>),
       academyId,
@@ -80,6 +86,9 @@ export const db = systemDb.$extends({
         if (!academyOwnedModels.has(model)) return query(args)
 
         const context = getTenantContext()
+        if (model === 'Swimmer' || model === 'User') {
+          console.info(`[TENANT] prisma-context=${context?.mode === 'academy'}`)
+        }
         if (context?.mode === 'platform') return query(args)
         if (!context || context.mode !== 'academy') throw new TenantContextError()
 

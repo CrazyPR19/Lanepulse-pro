@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { audit, errorResponse, json, parseBody } from "@/lib/api";
@@ -12,7 +13,7 @@ function dayRange(date: Date) {
   return { gte: start, lte: end };
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<{ sourcePlanId?: string; mode?: CopyMode; sourceDate?: string; newPlanDate?: string; period?: string }>(req);
@@ -63,3 +64,5 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

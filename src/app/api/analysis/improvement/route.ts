@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Improvement report
 // Compare only same swimmer + same style + same distance.
 import { NextRequest } from "next/server";
@@ -7,7 +8,7 @@ import { json, errorResponse } from "@/lib/api";
 import { improvementBucket } from "@/lib/analysis";
 import type { ImprovementReport } from "@/lib/types";
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireUser();
     const url = req.nextUrl;
@@ -105,3 +106,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

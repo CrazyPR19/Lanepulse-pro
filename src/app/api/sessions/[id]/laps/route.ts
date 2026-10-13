@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Session laps (list, ordered by laneNo then lapNo)
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -19,7 +20,7 @@ function toLapDTO(l: any): SessionLapDTO {
   };
 }
 
-export async function GET(
+async function GETHandler(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
@@ -40,3 +41,5 @@ export async function GET(
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

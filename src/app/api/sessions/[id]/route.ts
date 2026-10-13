@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Session detail (GET/PATCH/DELETE)
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -90,7 +91,7 @@ async function fetchFullSession(id: string) {
 }
 
 // ---------- GET ----------
-export async function GET(
+async function GETHandler(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
@@ -114,7 +115,7 @@ type PatchBody = {
   sessionStartTime?: string | null;
 };
 
-export async function PATCH(
+async function PATCHHandler(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
@@ -159,7 +160,7 @@ export async function PATCH(
 }
 
 // ---------- DELETE ----------
-export async function DELETE(
+async function DELETEHandler(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
@@ -196,3 +197,7 @@ export async function DELETE(
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const PATCH = withAuthenticatedAcademyRoute(PATCHHandler);
+export const DELETE = withAuthenticatedAcademyRoute(DELETEHandler);

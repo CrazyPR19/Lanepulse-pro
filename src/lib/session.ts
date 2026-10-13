@@ -3,7 +3,10 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { systemDb } from "@/lib/db";
-import { enterAcademyContext, enterPlatformContext } from "@/lib/tenant-context";
+import {
+  getTenantContext,
+  runWithTenantContext,
+} from "@/lib/tenant-context";
 import type { PlatformRole, Role, UserDTO } from "@/lib/types";
 
 export interface AppSession {
@@ -37,8 +40,6 @@ export async function getSession(): Promise<AppSession | null> {
     platformRole: u.platformRole ?? null,
     isActive: u.isActive,
   };
-  if (appSession.academyId) enterAcademyContext(appSession.academyId);
-  else if (appSession.platformRole === "PLATFORM_SUPER_ADMIN") enterPlatformContext();
   return appSession;
 }
 
@@ -73,10 +74,75 @@ export async function requireRole(...roles: Role[]): Promise<AcademySession> {
 
 export type AcademySession = AppSession & { academyId: string; academyName: string };
 
+const ACADEMY_ROLES = new Set<Role>([
+  "SUPER_ADMIN",
+  "ACADEMY_OWNER",
+  "ACADEMY_ADMIN",
+  "COACH",
+  "VIEWER",
+  "PARENT",
+]);
+
+/** Validate the live account, then execute the full callback in academy scope. */
+export async function withAuthenticatedAcademy<T>(
+  callback: (session: AcademySession) => Promise<T>,
+): Promise<T> {
+  const tokenSession = await getSession();
+  if (!tokenSession) throw new UnauthenticatedError();
+
+  const user = await systemDb.user.findUnique({
+    where: { id: tokenSession.userId },
+    include: { academy: { select: { academyName: true, isActive: true } } },
+  });
+  if (!user || !user.isActive) {
+    throw new ForbiddenError("This account is not active.", "ACCESS_DENIED");
+  }
+  if (!user.academyId || !user.academy) {
+    throw new ForbiddenError("Academy assignment is missing.", "ACADEMY_MISSING");
+  }
+  if (!user.academy.isActive) {
+    throw new ForbiddenError("This academy has been disabled.", "ACADEMY_DISABLED");
+  }
+  if (!ACADEMY_ROLES.has(user.role as Role)) {
+    throw new ForbiddenError("This account does not have a valid academy role.", "ACCESS_DENIED");
+  }
+
+  const session: AcademySession = {
+    userId: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role as Role,
+    academyId: user.academyId,
+    academyName: user.academy.academyName,
+    academyRole: user.role as Role,
+    platformRole: (user.platformRole as PlatformRole | null) ?? null,
+    isActive: user.isActive,
+  };
+
+  console.info("[TENANT] authenticated=true academy=true");
+  return runWithTenantContext(
+    {
+      mode: "academy",
+      userId: session.userId,
+      academyId: session.academyId,
+      academyRole: session.academyRole,
+      platformRole: session.platformRole,
+    },
+    async () => {
+      const context = getTenantContext();
+      console.info(
+        `[TENANT] context=${context?.mode === "academy"} academy=${context?.mode === "academy"}`,
+      );
+      return await callback(session);
+    },
+  );
+}
+
 export async function requireAcademyContext(): Promise<AcademySession> {
   const s = await requireUser();
   if (!s.academyId || !s.academyName) {
-    throw new ForbiddenError("An academy account is required.");
+    throw new ForbiddenError("Academy assignment is missing.", "ACADEMY_MISSING");
   }
   return s as AcademySession;
 }
@@ -96,13 +162,17 @@ export async function requirePlatformAdmin(): Promise<AppSession> {
 
 export class UnauthenticatedError extends Error {
   status = 401;
+  code = "UNAUTHENTICATED";
   constructor() {
     super("Unauthenticated");
   }
 }
 export class ForbiddenError extends Error {
   status = 403;
-  constructor(message = "You do not have permission to perform this action.") {
+  constructor(
+    message = "You do not have permission to perform this action.",
+    public readonly code = "ACCESS_DENIED",
+  ) {
     super(message);
   }
 }

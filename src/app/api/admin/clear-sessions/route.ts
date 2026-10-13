@@ -1,10 +1,11 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - admin clear sessions (SUPER_ADMIN only)
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { json, errorResponse, parseBody, audit } from "@/lib/api";
 import { NextRequest } from "next/server";
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("SUPER_ADMIN");
     const body = await parseBody<{ confirm?: string }>(req);
@@ -42,3 +43,5 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

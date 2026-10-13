@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { audit, errorResponse, json, parseBody } from "@/lib/api";
@@ -14,7 +15,7 @@ const detailInclude = {
   _count: { select: { runs: true, copies: true } },
 };
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function GETHandler(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const { id } = await params;
@@ -28,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function PATCHHandler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const { id } = await params;
@@ -70,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function DELETEHandler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireRole("SUPER_ADMIN");
     const { id } = await params;
@@ -99,3 +100,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const PATCH = withAuthenticatedAcademyRoute(PATCHHandler);
+export const DELETE = withAuthenticatedAcademyRoute(DELETEHandler);

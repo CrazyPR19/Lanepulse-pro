@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { audit, errorResponse, json, parseBody } from "@/lib/api";
@@ -70,7 +71,7 @@ function validate(body: SaveInput) {
   return null;
 }
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireRole("COACH", "SUPER_ADMIN");
     const limit = Math.min(100, Math.max(1, Number(req.nextUrl.searchParams.get("limit") ?? 30)));
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<SaveInput>(req);
@@ -184,7 +185,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function PATCH(req: NextRequest) {
+async function PATCHHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<{ id?: string; status?: string; forceComplete?: boolean }>(req);
@@ -229,3 +230,7 @@ export async function PATCH(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);
+export const PATCH = withAuthenticatedAcademyRoute(PATCHHandler);

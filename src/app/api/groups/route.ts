@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - training groups / heats
 import { db } from "@/lib/db";
 import { requireUser, requireRole } from "@/lib/session";
@@ -35,7 +36,7 @@ export function toGroupDTO(
   };
 }
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireUser();
     const { searchParams } = new URL(req.url);
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<{
@@ -117,3 +118,6 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Parent Portal: list assigned children
 // GET  /api/parent/children
 // Returns the active ParentSwimmer mappings for the authenticated parent,
@@ -7,7 +8,7 @@ import { requireRole } from "@/lib/session";
 import { json, errorResponse } from "@/lib/api";
 import type { ParentSwimmerDTO } from "@/lib/types";
 
-export async function GET() {
+async function GETHandler() {
   try {
     const session = await requireRole("PARENT");
 
@@ -37,3 +38,5 @@ export async function GET() {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

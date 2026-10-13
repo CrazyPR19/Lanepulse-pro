@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Swimmer vs Swimmer comparison
 // Compare only same style + same distance + within date range.
 import { NextRequest } from "next/server";
@@ -7,7 +8,7 @@ import { json, errorResponse } from "@/lib/api";
 import { min, avg, stddev } from "@/lib/analysis";
 import type { SwimmerVsSwimmerReport } from "@/lib/types";
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireUser();
     const url = req.nextUrl;
@@ -109,3 +110,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

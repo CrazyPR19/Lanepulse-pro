@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Smart training recommendations engine
 // Compare only same swimmer + same style + same distance.
 import { NextRequest } from "next/server";
@@ -103,7 +104,7 @@ function styleTips(styleName: string): { why: string[]; train: string[] } {
 }
 
 // ---------- Main handler ----------
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     const session = await requireUser();
     const url = req.nextUrl;
@@ -369,3 +370,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

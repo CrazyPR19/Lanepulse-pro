@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { audit, errorResponse, json, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
@@ -17,7 +18,7 @@ type ResultInput = {
 type FinalizeInput = { prepareNext?: boolean; results?: ResultInput[] };
 type RouteContext = { params: Promise<{ practiceRunId: string; groupId: string; repeatNo: string }> };
 
-export async function POST(req: Request, { params }: RouteContext) {
+async function POSTHandler(req: Request, { params }: RouteContext) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const { practiceRunId, groupId, repeatNo: repeatValue } = await params;
@@ -148,3 +149,5 @@ export async function POST(req: Request, { params }: RouteContext) {
     return errorResponse(err);
   }
 }
+
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

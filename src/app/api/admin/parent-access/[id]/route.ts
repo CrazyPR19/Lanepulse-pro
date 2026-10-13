@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Admin: delete / deactivate a parent-child mapping
 // DELETE /api/admin/parent-access/[id]
 //   body optional: { permanent?: boolean }
@@ -8,7 +9,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { json, errorResponse, parseBody, audit } from "@/lib/api";
 
-export async function DELETE(
+async function DELETEHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -69,3 +70,5 @@ export async function DELETE(
     return errorResponse(err);
   }
 }
+
+export const DELETE = withAuthenticatedAcademyRoute(DELETEHandler);

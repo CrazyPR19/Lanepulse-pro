@@ -17,13 +17,13 @@ export function json<T>(data: T, status = 200) {
 /** Standard error response */
 export function errorResponse(err: unknown) {
   if (err instanceof UnauthenticatedError) {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthenticated", code: err.code }, { status: 401 });
   }
   if (err instanceof ForbiddenError) {
-    return NextResponse.json({ error: err.message }, { status: 403 });
+    return NextResponse.json({ error: err.message, code: err.code }, { status: 403 });
   }
   if (err instanceof TenantContextError) {
-    return NextResponse.json({ error: err.message }, { status: 403 });
+    return NextResponse.json({ error: err.message, code: err.code }, { status: 403 });
   }
   console.error("API request failed", err instanceof Error ? err.message : "Unknown error");
   return NextResponse.json({ error: "The request could not be completed." }, { status: 500 });

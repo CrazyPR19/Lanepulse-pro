@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - admin audit log (SUPER_ADMIN only)
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
@@ -29,7 +30,7 @@ function toAuditDTO(
   };
 }
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireRole("SUPER_ADMIN");
     const { searchParams } = new URL(req.url);
@@ -50,3 +51,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

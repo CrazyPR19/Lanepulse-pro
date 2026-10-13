@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - user [id] management (SUPER_ADMIN only)
 import { db } from "@/lib/db";
 import { requireRole, toUserDTO } from "@/lib/session";
@@ -13,7 +14,7 @@ import { NextRequest } from "next/server";
 
 const VALID_ROLES: Role[] = ["ACADEMY_OWNER", "ACADEMY_ADMIN", "COACH", "VIEWER", "PARENT"];
 
-export async function PATCH(
+async function PATCHHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -103,7 +104,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function DELETEHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -194,3 +195,6 @@ export async function DELETE(
     return errorResponse(err);
   }
 }
+
+export const PATCH = withAuthenticatedAcademyRoute(PATCHHandler);
+export const DELETE = withAuthenticatedAcademyRoute(DELETEHandler);

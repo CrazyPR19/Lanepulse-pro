@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Admin: parent-child access management (COACH+)
 // GET   /api/admin/parent-access          list ALL mappings (with names)
 // POST  /api/admin/parent-access          assign / reactivate a mapping
@@ -33,7 +34,7 @@ function toDTO(m: {
   };
 }
 
-export async function GET() {
+async function GETHandler() {
   try {
     await requireRole("COACH", "SUPER_ADMIN");
 
@@ -51,7 +52,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<{
@@ -140,3 +141,6 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

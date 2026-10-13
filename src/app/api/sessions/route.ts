@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Sessions CRUD (list + create with lanes/laps)
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -36,7 +37,7 @@ function toSessionDTO(s: any): TrainingSessionDTO {
 }
 
 // ---------- GET /api/sessions ----------
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireUser();
     const url = req.nextUrl;
@@ -109,7 +110,7 @@ type CreateBody = {
   lanes?: LaneInput[];
 };
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<CreateBody>(req);
@@ -257,3 +258,6 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

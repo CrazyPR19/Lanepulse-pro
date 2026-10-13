@@ -1,8 +1,9 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { db } from "@/lib/db";
 import { errorResponse, json } from "@/lib/api";
 import { requireRole } from "@/lib/session";
 
-export async function GET() {
+async function GETHandler() {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const plans = await db.trainingPlan.findMany({
@@ -148,3 +149,5 @@ export async function GET() {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

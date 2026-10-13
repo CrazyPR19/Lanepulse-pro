@@ -1,17 +1,33 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-type TenantContext =
-  | { mode: "academy"; academyId: string }
-  | { mode: "platform" };
+import type { PlatformRole, Role } from "@/lib/types";
 
-const tenantStorage = new AsyncLocalStorage<TenantContext>();
+export type TenantContext =
+  | {
+      mode: "academy";
+      userId: string;
+      academyId: string;
+      academyRole: Role;
+      platformRole: PlatformRole | null;
+    }
+  | { mode: "platform"; userId?: string };
 
-export function enterAcademyContext(academyId: string) {
-  tenantStorage.enterWith({ mode: "academy", academyId });
-}
+const globalForTenant = globalThis as unknown as {
+  lanePulseTenantStorage?: AsyncLocalStorage<TenantContext>;
+};
 
-export function enterPlatformContext() {
-  tenantStorage.enterWith({ mode: "platform" });
+// Next.js can evaluate server modules in more than one bundle. Anchoring the
+// storage on globalThis keeps the Prisma extension and route helpers aligned.
+const tenantStorage =
+  globalForTenant.lanePulseTenantStorage ?? new AsyncLocalStorage<TenantContext>();
+
+globalForTenant.lanePulseTenantStorage = tenantStorage;
+
+export function runWithTenantContext<T>(
+  context: TenantContext,
+  callback: () => T,
+): T {
+  return tenantStorage.run(context, callback);
 }
 
 export function getTenantContext() {
@@ -20,6 +36,7 @@ export function getTenantContext() {
 
 export class TenantContextError extends Error {
   status = 403;
+  code = "ACADEMY_MISSING";
 
   constructor() {
     super("An authenticated academy context is required.");

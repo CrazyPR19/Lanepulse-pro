@@ -1,9 +1,10 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { errorResponse, json, parseBody } from "@/lib/api";
 import { requireAcademyContext, requireAcademyRole } from "@/lib/session";
 
-export async function GET() {
+async function GETHandler() {
   try {
     const session = await requireAcademyContext();
     const academy = await db.academy.findUnique({
@@ -17,7 +18,7 @@ export async function GET() {
   }
 }
 
-export async function PATCH(req: NextRequest) {
+async function PATCHHandler(req: NextRequest) {
   try {
     const session = await requireAcademyRole("ACADEMY_ADMIN", "SUPER_ADMIN");
     const body = await parseBody<Record<string, unknown>>(req);
@@ -66,3 +67,6 @@ export async function PATCH(req: NextRequest) {
     return errorResponse(error);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const PATCH = withAuthenticatedAcademyRoute(PATCHHandler);

@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - swimming styles
 import { db } from "@/lib/db";
 import { requireUser, requireRole } from "@/lib/session";
@@ -25,7 +26,7 @@ function toStyleDTO(s: {
   };
 }
 
-export async function GET() {
+async function GETHandler() {
   try {
     await requireUser();
     const styles = await db.swimmingStyle.findMany({
@@ -37,7 +38,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("SUPER_ADMIN");
     const body = await parseBody<{
@@ -75,3 +76,6 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

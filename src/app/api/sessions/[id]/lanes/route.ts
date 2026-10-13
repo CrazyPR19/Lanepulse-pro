@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Session lanes (convenience list)
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -32,7 +33,7 @@ function toLaneDTO(l: any): SessionLaneDTO {
   };
 }
 
-export async function GET(
+async function GETHandler(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
@@ -57,3 +58,5 @@ export async function GET(
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

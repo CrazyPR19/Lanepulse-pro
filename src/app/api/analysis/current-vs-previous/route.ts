@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Current vs Previous report (per swimmer within filters)
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -6,7 +7,7 @@ import { json, errorResponse } from "@/lib/api";
 import { changeBucket } from "@/lib/analysis";
 import type { CurrentVsPreviousReport } from "@/lib/types";
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireUser();
     const url = req.nextUrl;
@@ -75,3 +76,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

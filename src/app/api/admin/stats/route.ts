@@ -1,9 +1,10 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - admin stats (SUPER_ADMIN only)
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { json, errorResponse } from "@/lib/api";
 
-export async function GET() {
+async function GETHandler() {
   try {
     await requireRole("SUPER_ADMIN");
     const [
@@ -44,3 +45,5 @@ export async function GET() {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

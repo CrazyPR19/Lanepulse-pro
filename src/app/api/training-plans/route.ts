@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { audit, errorResponse, json, parseBody } from "@/lib/api";
@@ -16,7 +17,7 @@ const includePlan = {
   _count: { select: { runs: true, copies: true } },
 };
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const status = req.nextUrl.searchParams.get("status");
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const body = await parseBody<{ planDate?: string; planName?: string; period?: string; remarks?: string; status?: string; sets?: TrainingPlanSetInput[] }>(req);
@@ -88,3 +89,6 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);

@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - swimmer [id] detail + history
 import { db } from "@/lib/db";
 import { requireUser, requireRole } from "@/lib/session";
@@ -55,7 +56,7 @@ function toSessionDTO(
   };
 }
 
-export async function GET(
+async function GETHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -140,7 +141,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function PATCHHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -211,7 +212,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function DELETEHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -271,3 +272,7 @@ export async function DELETE(
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const PATCH = withAuthenticatedAcademyRoute(PATCHHandler);
+export const DELETE = withAuthenticatedAcademyRoute(DELETEHandler);

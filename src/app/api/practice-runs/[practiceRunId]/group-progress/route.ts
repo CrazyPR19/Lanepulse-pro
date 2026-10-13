@@ -1,10 +1,11 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 import { errorResponse, json } from "@/lib/api";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 
 type RouteContext = { params: Promise<{ practiceRunId: string }> };
 
-export async function GET(_req: Request, { params }: RouteContext) {
+async function GETHandler(_req: Request, { params }: RouteContext) {
   try {
     const session = await requireRole("COACH", "SUPER_ADMIN");
     const { practiceRunId } = await params;
@@ -54,3 +55,5 @@ export async function GET(_req: Request, { params }: RouteContext) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

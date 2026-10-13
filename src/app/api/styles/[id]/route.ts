@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - swimming styles [id]
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
@@ -24,7 +25,7 @@ function toStyleDTO(s: {
   };
 }
 
-export async function PATCH(
+async function PATCHHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -73,7 +74,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function DELETEHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -117,3 +118,6 @@ export async function DELETE(
     return errorResponse(err);
   }
 }
+
+export const PATCH = withAuthenticatedAcademyRoute(PATCHHandler);
+export const DELETE = withAuthenticatedAcademyRoute(DELETEHandler);

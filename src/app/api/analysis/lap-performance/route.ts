@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Lap performance report
 // Mode 1: ?sessionId=  -> aggregate all laps across all lanes in that session, grouped by lapNo
 // Mode 2: ?swimmerId=&styleId=&distanceMeters= -> aggregate laps across matching sessions for this swimmer
@@ -8,7 +9,7 @@ import { json, errorResponse } from "@/lib/api";
 import { computeLapPerformance, avg } from "@/lib/analysis";
 import type { LapPerformanceReport } from "@/lib/types";
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireUser();
     const url = req.nextUrl;
@@ -112,3 +113,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Group ranking within a session
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -5,7 +6,7 @@ import { requireUser } from "@/lib/session";
 import { json, errorResponse } from "@/lib/api";
 import type { GroupRankingRow } from "@/lib/types";
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   try {
     await requireUser();
     const url = req.nextUrl;
@@ -53,3 +54,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

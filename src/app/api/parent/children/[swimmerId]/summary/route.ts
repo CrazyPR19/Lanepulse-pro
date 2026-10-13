@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - Parent Portal: full child summary
 // GET  /api/parent/children/[swimmerId]/summary
 // Returns a parent-friendly summary of one child's progress.
@@ -11,7 +12,7 @@ import { formatSeconds } from "@/lib/helpers";
 import { avg, min, max, changeBucket } from "@/lib/analysis";
 import type { ParentChildSummaryDTO, Gender } from "@/lib/types";
 
-export async function GET(
+async function GETHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ swimmerId: string }> }
 ) {
@@ -405,3 +406,5 @@ export async function GET(
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);

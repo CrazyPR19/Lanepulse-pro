@@ -1,3 +1,4 @@
+import { withAuthenticatedAcademyRoute } from "@/lib/academy-route";
 // LanePulse Pro - user management (SUPER_ADMIN only)
 import { db } from "@/lib/db";
 import { requireRole, toUserDTO } from "@/lib/session";
@@ -14,7 +15,7 @@ import { NextRequest } from "next/server";
 
 const VALID_ROLES: Role[] = ["ACADEMY_ADMIN", "COACH", "VIEWER", "PARENT"];
 
-export async function GET() {
+async function GETHandler() {
   try {
     await requireRole("SUPER_ADMIN");
     const users = await db.user.findMany({
@@ -26,7 +27,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   try {
     const session = await requireRole("SUPER_ADMIN");
     const body = await parseBody<{
@@ -50,7 +51,10 @@ export async function POST(req: NextRequest) {
       return json({ error: "Invalid role" }, 400);
     }
     if (session.academyRole === "ACADEMY_ADMIN" && body.role === "ACADEMY_ADMIN") {
-      return json({ error: "Only the academy owner can assign Academy Admins." }, 403);
+      return json(
+        { error: "Only the academy owner can assign Academy Admins.", code: "ACCESS_DENIED" },
+        403,
+      );
     }
 
     const email = body.email!.trim().toLowerCase();
@@ -76,6 +80,7 @@ export async function POST(req: NextRequest) {
         passwordHash,
         role: body.role as Role,
         isActive: body.isActive ?? true,
+        academyId: session.academyId,
       },
     });
     await audit(
@@ -90,3 +95,6 @@ export async function POST(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = withAuthenticatedAcademyRoute(GETHandler);
+export const POST = withAuthenticatedAcademyRoute(POSTHandler);
