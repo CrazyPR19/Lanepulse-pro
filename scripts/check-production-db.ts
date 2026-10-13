@@ -148,6 +148,37 @@ async function main() {
       console.log(`${table} orphan academy references: ${rows[0] ? Number(rows[0].count) : 0}`);
     }
   }
+
+  if (existing.get("User")) {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        email: true,
+        isActive: true,
+        academyId: true,
+        role: true,
+        platformRole: true,
+        academy: {
+          select: {
+            isActive: true,
+            settings: { select: { id: true } },
+          },
+        },
+      },
+    });
+    console.log(`Production users: ${users.length}`);
+    if (users.length === 1) console.log("Initial production user: YES (only user)");
+    for (const user of users) {
+      console.log(`User email: ${user.email}`);
+      console.log(`  isActive: ${yesNo(user.isActive)}`);
+      console.log(`  academyId: ${user.academyId ? "PRESENT" : "MISSING"}`);
+      console.log(`  academyRole: ${user.role}`);
+      console.log(`  platformRole: ${user.platformRole ?? "NONE"}`);
+      console.log(`  linked Academy exists: ${yesNo(Boolean(user.academy))}`);
+      console.log(`  Academy isActive: ${user.academy ? yesNo(user.academy.isActive) : "N/A"}`);
+      console.log(`  AcademySettings exists: ${yesNo(Boolean(user.academy?.settings))}`);
+    }
+  }
 }
 
 main()

@@ -3,7 +3,7 @@
 // LanePulse Pro - top-level auth gate
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { api, ApiError } from "@/lib/api-client";
 import { useAppStore, canAccess, defaultViewForRole } from "@/lib/store";
 import { SetupWizard } from "@/components/setup-wizard";
@@ -28,14 +28,17 @@ import { PlatformAdminView } from "@/components/views/platform-admin-view";
 import { AcademyOnboarding } from "@/components/academy-onboarding";
 import { useQuery } from "@tanstack/react-query";
 
-type Phase = "loading" | "setup" | "login" | "app" | "database-error";
+type Phase = "loading" | "setup" | "login" | "app" | "database-error" | "access-error";
 type SetupFailure = "DATABASE_UNAVAILABLE" | "DATABASE_SCHEMA_NOT_READY";
+type ProfileFailure = { code: string; message: string };
 
 export function AuthGate() {
   const { data: session, status } = useSession();
   const { user, setUser, view, hasSetup, setHasSetup, setView } = useAppStore();
   const [setupFailure, setSetupFailure] = useState<SetupFailure | null>(null);
   const [setupCheck, setSetupCheck] = useState(0);
+  const [profileFailure, setProfileFailure] = useState<ProfileFailure | null>(null);
+  const [profileCheck, setProfileCheck] = useState(0);
   const academySettings = useQuery<any>({ queryKey: ["academy", "settings"], queryFn: () => api.get("/api/academy/settings"), enabled: !!user?.academyId && user.role === "ACADEMY_OWNER" });
 
   // Check setup status on first mount (side-effect only — no setState-in-effect
@@ -70,18 +73,25 @@ export function AuthGate() {
   // When authenticated but user profile not yet loaded, fetch it.
   useEffect(() => {
     if (status === "authenticated" && session?.user && !user && hasSetup) {
+      setProfileFailure(null);
       api
         .get<any>("/api/me")
         .then((u) => setUser(u))
-        .catch(() => {});
+        .catch((error) => {
+          const failure = error instanceof ApiError
+            ? { code: error.code ?? "ACCESS_DENIED", message: error.message }
+            : { code: "ACCESS_DENIED", message: "Your account could not be loaded." };
+          setProfileFailure(failure);
+        });
     }
-  }, [status, session, user, setUser, hasSetup]);
+  }, [status, session, user, setUser, hasSetup, profileCheck]);
 
   // Derive phase from current state — no stored state, no setState-in-effect.
   const phase: Phase = (() => {
     if (setupFailure) return "database-error";
     if (status === "loading" || hasSetup === undefined) return "loading";
     if (!hasSetup) return "setup";
+    if (profileFailure) return "access-error";
     if (status === "authenticated" && session?.user) return "app";
     return "login";
   })();
@@ -103,6 +113,31 @@ export function AuthGate() {
           <Button className="mt-5 min-h-11" onClick={() => { setSetupFailure(null); setSetupCheck((value) => value + 1); }}>
             <RefreshCw className="size-4" /> Retry
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "access-error" && profileFailure) {
+    const titles: Record<string, string> = {
+      ACADEMY_MISSING: "Academy assignment missing",
+      ACCOUNT_DISABLED: "Account disabled",
+      ACADEMY_DISABLED: "Academy disabled",
+      ACCESS_DENIED: "Access denied",
+      USER_NOT_FOUND: "Account not found",
+    };
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
+        <div className="w-full max-w-md rounded-lg border border-amber-400/30 bg-slate-900 p-6 text-center text-white shadow-xl">
+          <AlertTriangle className="mx-auto size-10 text-amber-400" />
+          <h1 className="mt-4 text-xl font-semibold">{titles[profileFailure.code] ?? "Account unavailable"}</h1>
+          <p className="mt-2 text-sm text-slate-300">{profileFailure.message}</p>
+          <div className="mt-5 flex justify-center gap-3">
+            <Button onClick={() => { setProfileFailure(null); setProfileCheck((value) => value + 1); }}>
+              <RefreshCw className="size-4" /> Retry
+            </Button>
+            <Button variant="outline" onClick={() => signOut({ callbackUrl: "/" })}>Sign out</Button>
+          </div>
         </div>
       </div>
     );
